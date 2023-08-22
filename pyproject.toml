@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "xtrain"
+version = "0.1.0"
+description = "A Flax trainer"
+authors = ["Ji Yu <jyu@uchc.edu>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+jax = {extras = ["cuda11-pip"], version = "^0.4.14"}
+flax = "^0.7.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+mkdocs-material = "^9.2.3"
+mkdocstrings = {extras = ["python"], version = "^0.22.0"}
+mkdocs-gen-files = "^0.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "jax"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+default = false
+secondary = false

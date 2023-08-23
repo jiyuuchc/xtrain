@@ -6,12 +6,16 @@ authors = ["Ji Yu <jyu@uchc.edu>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.9"
-jax = {extras = ["cuda11-pip"], version = "^0.4.14"}
+python = ">=3.9 <3.11"
 flax = "^0.7.2"
+
+[tool.poetry.group.dev]
+optional = true
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
+jax = {extras = ["cuda11-pip"], version = "^0.4.14"}
+tensorflow-cpu = "^2.13.0"
 
 [tool.poetry.group.docs]
 optional = true

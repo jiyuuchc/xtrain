@@ -15,7 +15,7 @@ from . import strategy
 from .data import *
 from .loss import LossLog
 
-from typing import Sequence, Optional, Iterator, Union
+from typing import Sequence, Optional, Iterator, Union, Any
 
 LOSSES = Union[LossFunc, Sequence[LossFunc]]
 METRICS = Union[Metric, Sequence[Metric]]

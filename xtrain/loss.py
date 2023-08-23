@@ -9,68 +9,10 @@ from flax import struct
 from .types import *
 from .utils import _get_name
 
-from typing import Union, Sequence
+from typing import Union, Sequence, Callable
 
 IndexLike = Union[str, int]
 FilterSpec = Union[IndexLike, Sequence[IndexLike]]
-
-class Reduction(Enum):
-    """
-    Types of loss reduction.
-
-    Contains the following values:
-    * `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis
-        specified by loss function). When this reduction type used with built-in
-        Keras training loops like `fit`/`evaluate`, the unreduced vector loss is
-        passed to the optimizer but the reported loss will be a scalar value.
-    * `SUM`: Scalar sum of weighted losses.
-    * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-    """
-
-    # AUTO = "auto"
-    NONE = "none"
-    SUM = "sum"
-    SUM_OVER_BATCH_SIZE = "sum_over_batch_size"
-
-    @classmethod
-    def all(cls):
-        return (
-            # cls.AUTO,
-            cls.NONE,
-            cls.SUM,
-            cls.SUM_OVER_BATCH_SIZE,
-        )
-
-    @classmethod
-    def validate(cls, key):
-        if key not in cls.all():
-            raise ValueError("Invalid Reduction Key %s." % key)
-
-
-def reduce_loss(
-    values: jnp.ndarray, sample_weight: tp.Optional[jnp.ndarray], weight, reduction
-) -> jnp.ndarray:
-
-    values = jnp.asarray(values)
-
-    if sample_weight is not None:
-        # expand `sample_weight` dimensions until it has the same rank as `values`
-        while sample_weight.ndim < values.ndim:
-            sample_weight = sample_weight[..., jnp.newaxis]
-
-        values *= sample_weight
-
-    if reduction == Reduction.NONE:
-        loss = values
-    elif reduction == Reduction.SUM:
-        loss = jnp.sum(values)
-    elif reduction == Reduction.SUM_OVER_BATCH_SIZE:
-        loss = jnp.sum(values) / jnp.prod(jnp.array(values.shape))
-    else:
-        raise ValueError(f"Invalid reduction '{reduction}'")
-
-    return loss * weight
-
 
 class LossLog(struct.PyTreeNode):
     loss_fn: Callable = struct.field(pytree_node=False)
@@ -85,25 +27,6 @@ class LossLog(struct.PyTreeNode):
 
     def compute(self):
         return self.sum / self.cnt
-
-
-def reduce_loss_func(func, reduction=Reduction.SUM_OVER_BATCH_SIZE):
-    @functools.wraps(func)
-    def wrapper(**kwargs):
-        values = jnp.asarray(func(**kwargs))
-
-        if reduction == Reduction.NONE:
-            loss = values
-        elif reduction == Reduction.SUM:
-            loss = jnp.sum(values)
-        elif reduction == Reduction.SUM_OVER_BATCH_SIZE:
-            loss = jnp.sum(values) / jnp.prod(jnp.array(values.shape[1:]))
-        else:
-            raise ValueError(f"Invalid reduction '{reduction}'")
-
-        return loss
-
-    return wrapper
 
 
 def loss_func_on(func, filters: FilterSpec):

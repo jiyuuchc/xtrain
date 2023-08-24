@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xtrain"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Flax trainer"
 authors = ["Ji Yu <jyu@uchc.edu>"]
 readme = "README.md"

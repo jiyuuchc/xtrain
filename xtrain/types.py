@@ -7,7 +7,7 @@ import optax
 from flax.core.frozen_dict import FrozenDict
 from jax import Array
 
-from typing import Mapping, Union, Iterator, Callable, Protocol, Any
+from typing import Mapping, Union, Iterable, Callable, Protocol, Any
 
 try:
     from jax.typing import ArrayLike
@@ -31,7 +31,7 @@ Optimizer = optax.GradientTransformation
 
 PathLike = Union[str, Path]
 
-DataSource = Union[Iterator, Callable]
+DataSource = Union[Iterable, Callable]
 
 
 class LossFunc(Protocol):

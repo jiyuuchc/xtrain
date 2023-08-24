@@ -5,7 +5,13 @@ from .utils import list_to_tuple
 
 
 class TorchDataLoaderAdapter:
-    """Adapter that handles torch Dataloaders."""
+    """Convert torch dataloader into a python iterable suitable for [xtrain.Trainer](./#xtrain.Trainer)
+    
+        ```
+        my_dataset = TorchDataLoaderAdapter(my_torch_dataloader)
+        ```
+
+    """
 
     def __init__(
         self,

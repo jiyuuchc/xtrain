@@ -1,0 +1,22 @@
+site_name: XTrain
+repo_url: https://github.com/jiyuuchc/xtrain
+theme: 
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - toc.integrate 
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+
+watch:
+  - xtrain

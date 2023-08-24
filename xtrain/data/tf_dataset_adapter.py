@@ -3,7 +3,13 @@ from tensorflow.data import Dataset
 
 
 class TFDatasetAdapter:
-    """Adapter that handles `tf.data.Dataset`."""
+    """Convert `tf.data.Dataset` into a python iterable suitable for [xtrain.Trainer](./#xtrain.Trainer)
+
+        ```
+        my_dataset = TFDatasetAdapter(my_tf_dataset)
+        ```
+
+    """
 
     def __init__(self, ds: Dataset, steps=-1):
         self._dataset = ds

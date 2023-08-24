@@ -30,6 +30,16 @@ class LossLog(struct.PyTreeNode):
 
 
 def loss_func_on(func, filters: FilterSpec):
+    """ A decorator for loss functions to select specific subcompoenent
+
+    Some models output multiple outputs and a loss needed to calculated on each 
+    subcomponent. The decorator makes it easy to generate new loss functions that
+    operate on a subcompoenent of the output. e.g. 
+
+        # compute loss only on the first element of the model output
+        new_loss_func = loss_func_on(orig_loss_func, 0) 
+
+    """
     @functools.wraps(func)
     def wrapper(**kwargs):
         if "labels" in kwargs and kwargs["labels"] is not None:
@@ -46,6 +56,11 @@ def loss_func_on(func, filters: FilterSpec):
 
 
 def partial_loss_func(func, *args, **kwargs):
+    """ A "partial"-like decorator for loss functions 
+
+    It differs from functools.partial in that in keeps the __name__ properties
+    so that the Trainer can report loss logs with a human readable name.
+    """
     new_func = functools.partial(func, *args, **kwargs)
 
     new_func.name = _get_name(func)

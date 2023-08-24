@@ -44,6 +44,23 @@ class Trainer:
         seed: RNG seed
         params: Current model parameters. This is a frozen dict. This is read/write.
         initialized: Whether the model has been initialized with an optimizer and initial weights.
+
+    Example:
+
+        ```
+        trainer = xtrain.Trainer(my_module, my_loss_func)
+
+        trainer.initialize(my_dataset, tx=my_optimzier)
+        
+        train_it = trainer.train(my_dataset)
+        
+        for k in range(train_steps):
+            loss_logs = next(train_it)
+            if k % 1000 == 0:
+                print(loss_logs)
+                trainer.reset()
+        ```
+
     """
 
     def __init__(
@@ -70,7 +87,6 @@ class Trainer:
         """
         self.model = model
         self.losses = losses
-        self._loss_weights = None
 
         self.seed = seed if isinstance(seed, jnp.ndarray) else jax.random.PRNGKey(seed)
         self._optimizer = optimizer
@@ -78,26 +94,24 @@ class Trainer:
         self._strategy = strategy
         self._initialized = False
 
-    def reset(self, loss_weights: Optional[Sequence[float]] = None):
+    def reset(self, loss_weights: Optional[Sequence[float]] = None, losses: Optional[LOSSES] = None):
         """Reset internal loss value tracking
 
         Args:
             loss_weights: Optional weights of individual loss functions. If not None, the
                 total loss is weighted sum.
+            losses: Optionally override the class losses defined as the object initialization.
         """
-        if self.losses is None:
+        if losses is None:
+            losses = self.losses
+
+        if losses is None:
             raise ValueError(f"No loss functions provided")
 
-        losses = self.losses
         try:
             iter(losses)
         except:
             losses = (losses,)
-
-        if loss_weights is not None:
-            self._loss_weights = loss_weights
-        else:
-            loss_weights = self._loss_weights
 
         if loss_weights is None:
             loss_weights = (1.0,) * len(losses)
@@ -121,7 +135,7 @@ class Trainer:
         Args:
             data: An iterator or generator function to produce training dataset. It is not
                 used if model is bound with weights already.
-                see [train()](./#lacss.train.trainer.Trainer.train)
+                see [train()](./#xtrain.trainer.Trainer.train)
             tx: Optional optax optimzier for when the object was constructed without an
                 optimizer
         """
@@ -191,10 +205,10 @@ class Trainer:
         """Create the training iterator
 
         Args:
-            dataset: An iterator or generator function to supply the training data.
-                The dataset should yield ```(inputs, labels)``` if the data come with labels or
-                ```(inputs, None)``` if there is no label. The inputs is either a tuple or a
-                dict. If the inputs is a dict, the keys are interpreted as the names for
+            dataset: An iterable or generator function to supply the training data.
+                The dataset should produce ```(inputs, labels, sample_weight)```, however
+                both the labels and the sample_weight are optioal. The inputs is either a tuple 
+                or a dict. If the inputs is a dict, the keys are interpreted as the names for
                 keyword args of the model's __call__ function.
             strategy: Optionally override the default strategy.
             rng_cols: Names of any RNG used by the model. Should be a list of strings.
@@ -205,15 +219,6 @@ class Trainer:
                 itself returns a loss log dict, which are mean loss values for each loss
                 function.
 
-        Examples:
-            ```
-            train_it = trainer.train(train_dataset, training=True)
-            for k in range(train_steps):
-                loss_logs = next(train_it)
-                if k % 1000 == 0:
-                    print(loss_logs)
-                    trainer.reset()
-            ```
         """
         if strategy is None:
             strategy = self._strategy
@@ -274,16 +279,14 @@ class Trainer:
         with open(path, "wb") as f:
             pickle.dump((module, params), f)
 
-    def pickle(self, path: PathLike) -> None:
+    def pickle_self(self, path: PathLike) -> None:
         """Make a pickle save of the trainer. This saves the model as well as
         the training states.
 
         Args:
             path: The file path.
         """
-        if isinstance(path, str):
-            path = pathlib.Path(path)
-
+        path = pathlib.Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "wb") as f:
@@ -299,10 +302,7 @@ class Trainer:
         Returns:
             A new trainer object.
         """
-        import pickle
-
-        if isinstance(path, str):
-            path = pathlib.Path(path)
+        path = pathlib.Path(path)
 
         try:
             _bytes = path.read_bytes()
@@ -323,8 +323,7 @@ class Trainer:
 
         Args:
             dataset: An iterator or generator function to supply the testing data.
-                The iterator should yield a tupple of (inputs, labels). The labels
-                should be a dict.
+                The iterator should yield a tupple of (inputs, labels).
             metrics: A list of Metric objects. They should have two functions:
                 m.update(preds, **kwargs):
                     preds is the model output. the remaining kwargs are content of
@@ -362,7 +361,7 @@ class Trainer:
             yield metrics
 
     def test_and_compute(self, *args, **kwargs) -> dict:
-        """A convient function to compute all metrics. See [test() fucntion](./#lacss.train.trainer.Trainer.test)
+        """A convient function to compute all metrics. See [test() fucntion](./#xtrain.trainer.Trainer.test)
 
         Returns:
             A metric dict. Keys are metric names.

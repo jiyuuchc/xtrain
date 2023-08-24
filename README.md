@@ -54,3 +54,7 @@ for step in range(train_steps):
         trainer.reset()
 ```
 
+### Full documentation
+
+https://jiyuuchc.github.io/xtrain/
+

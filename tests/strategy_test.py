@@ -3,7 +3,6 @@ from __future__ import annotations
 import flax.linen as nn
 import jax
 import optax
-
 import pytest
 
 import xtrain
@@ -11,6 +10,7 @@ import xtrain
 
 def mse(preds, labels, **kwargs):
     return ((preds - labels) ** 2).mean()
+
 
 def test_vmap_strategy():
     key = jax.random.PRNGKey(0)

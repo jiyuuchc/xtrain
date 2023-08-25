@@ -6,10 +6,10 @@ from .utils import list_to_tuple
 
 class TorchDataLoaderAdapter:
     """Convert torch dataloader into a python iterable suitable for [xtrain.Trainer](./#xtrain.Trainer)
-    
-        ```
-        my_dataset = TorchDataLoaderAdapter(my_torch_dataloader)
-        ```
+
+    ```
+    my_dataset = TorchDataLoaderAdapter(my_torch_dataloader)
+    ```
 
     """
 

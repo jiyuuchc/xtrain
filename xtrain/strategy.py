@@ -8,8 +8,8 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 from flax.training.train_state import TrainState
 
-from .utils import Inputs
 from .loss import LossLog
+from .utils import Inputs
 
 
 class Eager:

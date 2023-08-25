@@ -2,6 +2,7 @@ import pathlib
 import pickle
 from functools import lru_cache, partial
 from pathlib import Path
+from typing import Any, Iterator, Optional, Sequence, Union
 
 import flax.linen as nn
 import jax
@@ -9,13 +10,11 @@ import jax.numpy as jnp
 from flax.core.frozen_dict import freeze, unfreeze
 from flax.training.train_state import TrainState
 
-from .types import *
-from .utils import Inputs, _get_name
 from . import strategy
 from .data import *
 from .loss import LossLog
-
-from typing import Sequence, Optional, Iterator, Union, Any
+from .types import *
+from .utils import Inputs, _get_name
 
 LOSSES = Union[LossFunc, Sequence[LossFunc]]
 METRICS = Union[Metric, Sequence[Metric]]
@@ -51,9 +50,9 @@ class Trainer:
         trainer = xtrain.Trainer(my_module, my_loss_func)
 
         trainer.initialize(my_dataset, tx=my_optimzier)
-        
+
         train_it = trainer.train(my_dataset)
-        
+
         for k in range(train_steps):
             loss_logs = next(train_it)
             if k % 1000 == 0:
@@ -94,7 +93,11 @@ class Trainer:
         self._strategy = strategy
         self._initialized = False
 
-    def reset(self, loss_weights: Optional[Sequence[float]] = None, losses: Optional[LOSSES] = None):
+    def reset(
+        self,
+        loss_weights: Optional[Sequence[float]] = None,
+        losses: Optional[LOSSES] = None,
+    ):
         """Reset internal loss value tracking
 
         Args:
@@ -207,7 +210,7 @@ class Trainer:
         Args:
             dataset: An iterable or generator function to supply the training data.
                 The dataset should produce ```(inputs, labels, sample_weight)```, however
-                both the labels and the sample_weight are optioal. The inputs is either a tuple 
+                both the labels and the sample_weight are optioal. The inputs is either a tuple
                 or a dict. If the inputs is a dict, the keys are interpreted as the names for
                 keyword args of the model's __call__ function.
             strategy: Optionally override the default strategy.
@@ -375,7 +378,7 @@ class Trainer:
         return self.state.params
 
     @params.setter
-    def params(self, new_params: Params)->None:
+    def params(self, new_params: Params) -> None:
         old_state = self.state
         self.state = TrainState.create(
             apply_fn=self.model.apply,
@@ -388,7 +391,7 @@ class Trainer:
         return self._optimizer
 
     @optimizer.setter
-    def optimizer(self, tx: Optimizer)->None:
+    def optimizer(self, tx: Optimizer) -> None:
         self._optimizer = tx
 
         if self._initialized:

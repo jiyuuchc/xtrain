@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Callable, Iterable, Mapping, Protocol, Union
 
 import numpy as np
 import optax
 from flax.core.frozen_dict import FrozenDict
 from jax import Array
-
-from typing import Mapping, Union, Iterable, Callable, Protocol, Any
 
 try:
     from jax.typing import ArrayLike

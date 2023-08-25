@@ -5,9 +5,9 @@ from tensorflow.data import Dataset
 class TFDatasetAdapter:
     """Convert `tf.data.Dataset` into a python iterable suitable for [xtrain.Trainer](./#xtrain.Trainer)
 
-        ```
-        my_dataset = TFDatasetAdapter(my_tf_dataset)
-        ```
+    ```
+    my_dataset = TFDatasetAdapter(my_tf_dataset)
+    ```
 
     """
 

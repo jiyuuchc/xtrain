@@ -1,13 +1,13 @@
 import dataclasses
 import re
+from typing import Any, Dict, Iterable, Optional, Set, Tuple
 
 from flax import struct
 
 from .types import *
 
-from typing import Set, Iterable, Optional, Tuple, Dict, Any
-
 InputLike = Any
+
 
 def _unique_name(
     names: Set[str],

@@ -185,9 +185,7 @@ class Trainer:
 
         predict_fn = strategy.predict
 
-        state = self.state = self.state.replace(
-            apply_fn=_cached_partial(self.model.apply, **kwargs)
-        )
+        state = self.state.replace(apply_fn=_cached_partial(self.model.apply, **kwargs))
         preds = predict_fn(state, inputs)
 
         return preds
@@ -320,7 +318,11 @@ class Trainer:
         return trainer
 
     def test(
-        self, dataset: DataSource, metrics: METRICS, strategy: Optional[type] = None
+        self,
+        dataset: DataSource,
+        metrics: METRICS,
+        strategy: Optional[type] = None,
+        **kwargs,
     ) -> Iterator:
         """Create test/validation iterator.
 
@@ -347,12 +349,12 @@ class Trainer:
         except TypeError:
             metrics = [metrics]
 
-        # self.initialize(dataset, strategy)
+        state = self.state.replace(apply_fn=_cached_partial(self.model.apply, **kwargs))
+        predict_fn = strategy.predict
 
         for data in _get_iterator(dataset):
             inputs, labels, _ = unpack_x_y_sample_weight(data)
-            predict_fn = strategy.predict
-            preds = predict_fn(self.state, inputs)
+            preds = predict_fn(state, inputs)
             kwargs = dict(
                 inputs=inputs,
                 preds=preds,

@@ -2,7 +2,7 @@ import pathlib
 import pickle
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Any, Iterator, Optional, Sequence, Union
+from typing import Any, Iterable, Iterator, Optional, Sequence, Union
 
 import flax.linen as nn
 import jax
@@ -22,15 +22,6 @@ METRICS = Union[Metric, Sequence[Metric]]
 # so that multiple calls return the same obj
 # this avoids JIT when supplying partial func as args
 _cached_partial = lru_cache(partial)
-
-
-def _get_iterator(g):
-    try:
-        it = iter(g)
-    except:
-        it = iter(g())
-
-    return it
 
 
 class Trainer:
@@ -132,11 +123,11 @@ class Trainer:
     def initialized(self):
         return self._initialized
 
-    def initialize(self, data, tx: Optional[Optimizer] = None) -> None:
+    def initialize(self, data: Iterable, tx: Optional[Optimizer] = None) -> None:
         """Initialize the model weights and optimizer states.
 
         Args:
-            data: An iterator or generator function to produce training dataset. It is not
+            data: An iterator or iterable to produce training dataset. It is not
                 used if model is bound with weights already.
                 see [train()](./#xtrain.trainer.Trainer.train)
             tx: Optional optax optimzier for when the object was constructed without an
@@ -147,7 +138,7 @@ class Trainer:
 
         if not self._initialized:
             if self.model.scope is None:
-                peek = next(_get_iterator(data))
+                peek = next(data)
                 inputs, _, _ = unpack_x_y_sample_weight(peek)
 
                 self.seed, key = jax.random.split(self.seed)
@@ -198,7 +189,7 @@ class Trainer:
 
     def train(
         self,
-        dataset: DataSource,
+        dataset: Iterable,
         strategy: Optional[type] = None,
         rng_cols: Sequence[str] = None,
         **kwargs,
@@ -206,9 +197,9 @@ class Trainer:
         """Create the training iterator
 
         Args:
-            dataset: An iterable or generator function to supply the training data.
+            dataset: An iterator or iterable to supply the training data.
                 The dataset should produce ```(inputs, labels, sample_weight)```, however
-                both the labels and the sample_weight are optioal. The inputs is either a tuple
+                both the labels and the sample_weight are optional. The inputs is either a tuple
                 or a dict. If the inputs is a dict, the keys are interpreted as the names for
                 keyword args of the model's __call__ function.
             strategy: Optionally override the default strategy.
@@ -236,7 +227,7 @@ class Trainer:
         self.reset()
 
         self.seed, seed = jax.random.split(self.seed)
-        for step, data in enumerate(_get_iterator(dataset)):
+        for step, data in enumerate(dataset):
             batch = unpack_x_y_sample_weight(data)
 
             if rng_cols is not None:
@@ -319,7 +310,7 @@ class Trainer:
 
     def test(
         self,
-        dataset: DataSource,
+        dataset: Iterable,
         metrics: METRICS,
         strategy: Optional[type] = None,
         **kwargs,
@@ -327,7 +318,7 @@ class Trainer:
         """Create test/validation iterator.
 
         Args:
-            dataset: An iterator or generator function to supply the testing data.
+            dataset: An iterator or iterable to supply the testing data.
                 The iterator should yield a tupple of (inputs, labels).
             metrics: A list of Metric objects. They should have two functions:
                 m.update(preds, **kwargs):
@@ -352,7 +343,7 @@ class Trainer:
         state = self.state.replace(apply_fn=_cached_partial(self.model.apply, **kwargs))
         predict_fn = strategy.predict
 
-        for data in _get_iterator(dataset):
+        for data in dataset:
             inputs, labels, _ = unpack_x_y_sample_weight(data)
             preds = predict_fn(state, inputs)
             kwargs = dict(

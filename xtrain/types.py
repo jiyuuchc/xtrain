@@ -30,8 +30,6 @@ Optimizer = optax.GradientTransformation
 
 PathLike = Union[str, Path]
 
-DataSource = Union[Iterable, Callable]
-
 
 class LossFunc(Protocol):
     def __call__(self, preds: Any, labels: Any, inputs: Any) -> ArrayLike:
@@ -49,7 +47,6 @@ class Metric(Protocol):
 __all__ = [
     "Array",
     "ArrayLike",
-    "DataSource",
     "Params",
     "Optimizer",
     "LossFunc",

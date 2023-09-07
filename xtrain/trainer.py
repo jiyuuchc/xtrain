@@ -138,7 +138,7 @@ class Trainer:
 
         if not self._initialized:
             if self.model.scope is None:
-                peek = next(data)
+                peek = next(iter(data))
                 inputs, _, _ = unpack_x_y_sample_weight(peek)
 
                 self.seed, key = jax.random.split(self.seed)

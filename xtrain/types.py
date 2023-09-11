@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Protocol, Union
+from typing import Any, Mapping, Protocol, Union
 
 import numpy as np
 import optax
@@ -21,8 +21,6 @@ except:
         float,
         complex,  # Python scalar types
     ]
-
-DataDict = Mapping[str, Array]
 
 Params = FrozenDict
 

@@ -67,6 +67,8 @@ def _get_name(obj) -> str:
         return _lower_snake_case(obj.__name__)
     elif hasattr(obj, "__class__") and obj.__class__.__name__:
         return _lower_snake_case(obj.__class__.__name__)
+    elif hasattr(obj, "func") and obj.func.__name__:
+        return _lower_snake_case(obj.func.__name__)
     else:
         raise ValueError(f"Could not get name for: {obj}")
 

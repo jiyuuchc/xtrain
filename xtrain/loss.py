@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol, Sequence, Union
 
+from functools import partial
+
 import jax.numpy as jnp
 from flax import struct
 
@@ -14,7 +16,8 @@ class LossFunc_(Protocol):
 LossFunc = LossFunc_ | str
 
 
-class LossLog(struct.PyTreeNode):
+@partial(struct.dataclass, frozen=False)
+class LossLog:
     loss_fn: LossFunc = struct.field(pytree_node=False)
     weight: float = 1.0
     cnt: float = 0.0
@@ -41,8 +44,8 @@ class LossLog(struct.PyTreeNode):
         return self.sum / self.cnt
 
     def reset(self):
-        object.__setattr__(self, "cnt", 0.0)
-        object.__setattr__(self, "sum", 0.0)
+        self.cnt = 0.0
+        self.sum = 0.0
 
     def __repr__(self) -> str:
         return _get_name(self.loss_fn) + f": {float(self.sum / self.cnt):.4f}"

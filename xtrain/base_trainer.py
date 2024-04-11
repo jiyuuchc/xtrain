@@ -41,7 +41,7 @@ RNG = jax.Array
 _cached_partial = lru_cache(partial)
 
 
-@struct.dataclass
+@partial(struct.dataclass, frozen=False)
 class TrainIterator(Iterator):
     """The iterator obj returned by Trainer.train(). Iterating this object drives the training. The object supports orbax checkpointing.
 
@@ -115,14 +115,9 @@ class TrainIterator(Iterator):
 
         preds, variables = unpack_prediction_and_state(preds, self.has_aux)
 
-        # use the object hack until we upgrade flax
-        object.__setattr__(self, "train_state", train_state)
-        object.__setattr__(self, "loss_logs", loss_logs)
-        object.__setattr__(self, "variables", variables)
-
-        # batch_logs = self._compute_loss_log()
-
-        # return batch_logs
+        self.train_state = train_state
+        self.loss_logs = loss_logs
+        self.variables = variables
 
         return preds
 

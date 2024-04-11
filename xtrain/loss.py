@@ -1,69 +1,43 @@
 from __future__ import annotations
 
-# import functools
-# from enum import Enum
 from typing import Sequence, Union
 
 import jax.numpy as jnp
 from flax import struct
 
-from .types import *
+from ..typing import LossFunc
 from .utils import _get_name
-
-IndexLike = Union[str, int]
-FilterSpec = Union[IndexLike, Sequence[IndexLike]]
 
 
 class LossLog(struct.PyTreeNode):
     loss_fn: LossFunc = struct.field(pytree_node=False)
-    weight: jnp.ndarray = 1.0
-    cnt: jnp.ndarray = 0.0
-    sum: jnp.ndarray = 0.0
+    weight: float = 1.0
+    cnt: float = 0.0
+    sum: float = 0.0
 
-    def update(self, **kwargs):
-        loss = self.loss_fn(**kwargs) * self.weight
-        new_log = self.replace(cnt=self.cnt + 1, sum=self.sum + loss)
-        return loss, new_log
+    # update() is meant to be called in JAX transformation so it cannot
+    # modify its fields. Instead it returns a new copy of self.
+    def update(self, batch, prediction):
+        if isinstance(self.loss_fn, str):
+            loss = prediction
+            for k in self.loss_fn.split("/"):
+                loss = loss[k]
+        else:
+            loss = self.loss_fn(batch, prediction)
+
+        if loss is None:
+            return 0.0, self
+
+        loss *= self.weight
+
+        return loss, self.replace(cnt=self.cnt + 1, sum=self.sum + loss)
 
     def compute(self):
         return self.sum / self.cnt
 
+    def reset(self):
+        object.__setattr__(self, "cnt", 0.0)
+        object.__setattr__(self, "sum", 0.0)
 
-# def loss_func_on(func, filters: FilterSpec):
-#     """A decorator for loss functions to select specific subcompoenent
-
-#     Some models output multiple outputs and a loss needed to calculated on each
-#     subcomponent. The decorator makes it easy to generate new loss functions that
-#     operate on a subcompoenent of the output. e.g.
-
-#         # compute loss only on the first element of the model output
-#         new_loss_func = loss_func_on(orig_loss_func, 0)
-
-#     """
-
-#     @functools.wraps(func)
-#     def wrapper(**kwargs):
-#         if "labels" in kwargs and kwargs["labels"] is not None:
-#             for index in filters:
-#                 kwargs["labels"] = kwargs["labels"][index]
-
-#         if "preds" in kwargs and kwargs["preds"] is not None:
-#             for index in filter:
-#                 kwargs["preds"] = kwargs["preds"][index]
-
-#         return func(**kwargs)
-
-#     return wrapper
-
-
-# def partial_loss_func(func, *args, **kwargs):
-#     """A "partial"-like decorator for loss functions
-
-#     It differs from functools.partial in that in keeps the __name__ properties
-#     so that the Trainer can report loss logs with a human readable name.
-#     """
-#     new_func = functools.partial(func, *args, **kwargs)
-
-#     new_func.name = _get_name(func)
-
-#     return new_func
+    def __repr__(self) -> str:
+        return _get_name(self.loss_fn) + f": {float(self.sum / self.cnt):.4f}"

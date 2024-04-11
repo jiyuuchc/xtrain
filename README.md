@@ -12,6 +12,7 @@ Design goals:
 
 ```
 class MyFlaxModule(nn.Module):
+  @nn.compact
   def __call__(self, x):
     ...
 ```
@@ -19,9 +20,8 @@ class MyFlaxModule(nn.Module):
 #### Step 2: define loss function
 
 ```
-def my_loss_func(**kwargs):
-    model_out = kwargs["preds"]
-    labels = kwargs["labels"]
+def my_loss_func(batch, prediction):
+    x, y_true = batch
     loss = ....
     return loss
 ```
@@ -41,17 +41,17 @@ my_data = itertools.cycle(
 trainer = xtrain.Trainer(
   model = MyFlaxModule(),
   losses = my_loss_func,
+  optimizer = optax.adam(1e-4),
 )
-trainer.initialize(my_data, tx=my_optax_optimizer)
 
-train_iter = trainer.train(my_data) # returns a python iterator
+train_iter = trainer.train(my_data) # returns a iterable object
 
 # iterate the train_iter trains the model
 for step in range(train_steps):
-    avg_loss = next(train_iter)
+    model_out = next(train_iter)
     if step // 1000 == 0:
-        print(avg_loss)
-        trainer.reset()
+        print(train_iter.loss_logs)
+        train_iter.reset_loss_logs()
 ```
 
 ### Full documentation

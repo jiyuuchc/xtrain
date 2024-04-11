@@ -8,8 +8,9 @@ import pytest
 import xtrain
 
 
-def mse(preds, labels, **kwargs):
-    return ((preds - labels) ** 2).mean()
+def mse(batch, prediction):
+    labels = batch[1]
+    return ((prediction - labels) ** 2).mean()
 
 
 def test_vmap_strategy():
@@ -25,11 +26,9 @@ def test_vmap_strategy():
     def _run():
         g = gen(X=_X, Y=_Y)
 
-        trainer.initialize(g)
-
-        for log in trainer.train(g):
+        for _ in (it := trainer.train(g)):
             pass
-        return log["mse"]
+        return it.loss["mse"]
 
     trainer = xtrain.Trainer(
         model=nn.Dense(4),

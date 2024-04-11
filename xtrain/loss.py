@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from typing import Sequence, Union
+from typing import Protocol, Sequence, Union
 
 import jax.numpy as jnp
 from flax import struct
 
-from ..typing import LossFunc
 from .utils import _get_name
+
+class LossFunc_(Protocol):
+    def __call__(self, batch: Any, prediction: Any) -> float:
+        ...
+
+LossFunc = LossFunc_ | str
 
 
 class LossLog(struct.PyTreeNode):

@@ -6,8 +6,6 @@ from typing import Any, Dict, Iterable, Optional, Set, Tuple
 import jax
 from flax import struct
 
-from ..typing import *
-
 InputLike = Any
 
 

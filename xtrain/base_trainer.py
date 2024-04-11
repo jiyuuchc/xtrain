@@ -5,7 +5,7 @@ import pickle
 from collections.abc import Iterator
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Callable, Iterable, Sequence, Union
+from typing import Callable, Iterable, Protocol, Sequence, Union
 
 import flax.linen as nn
 import jax
@@ -16,8 +16,7 @@ from flax import struct
 from flax.core.scope import CollectionFilter
 from flax.training.train_state import TrainState
 
-from ..typing import *
-from .loss import LossLog
+from .loss import LossLog, LossFunc
 from .strategy import JIT
 from .utils import (
     Peekable,
@@ -26,10 +25,16 @@ from .utils import (
     unpack_x_y_sample_weight,
 )
 
-WeightedLossFunc = LossFunc | tuple[LossFunc, float | np.number]
+class Metric(Protocol):
+    def update(self, batch: Any, prediction: Any):
+        ...
+
+    def compute(self, *args, **kwargs) -> dict:
+        ...
+
 LOSSES = Union[LossFunc, Sequence[LossFunc]]
 METRICS = Union[Metric, Sequence[Metric]]
-RNG = Array
+RNG = jax.Array
 
 # so that multiple calls return the same obj
 # this avoids JIT when supplying partial func as args

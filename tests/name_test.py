@@ -5,16 +5,16 @@ import pytest
 from xtrain.utils import _get_name
 
 
-def test_func(x):
+def my_test_func(x):
     pass
 
 
 def test_partial_func_name():
     from functools import partial
 
-    _f = partial(test_func, x=1)
+    _f = partial(my_test_func, x=1)
 
-    assert _get_name(_f) == "test_func"
+    assert _get_name(_f) == "my_test_func"
 
     def inner_func(x):
         pass

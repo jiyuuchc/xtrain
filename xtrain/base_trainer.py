@@ -5,7 +5,7 @@ import pickle
 from collections.abc import Iterator
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Callable, Iterable, Protocol, Sequence, Union
+from typing import Callable, Iterable, Protocol, Sequence, Union, Any, runtime_checkable
 
 import flax.linen as nn
 import jax
@@ -25,21 +25,24 @@ from .utils import (
     unpack_x_y_sample_weight,
 )
 
+@runtime_checkable
 class Metric(Protocol):
-    def update(self, batch: Any, prediction: Any):
+    def update(self, batch: Any, prediction: Any) -> Any:
         ...
 
     def compute(self, *args, **kwargs) -> dict:
         ...
 
+PathLike = Path | str
+MetricLike = Metric | LossFunc
 LOSSES = Union[LossFunc, Sequence[LossFunc]]
-METRICS = Union[Metric, Sequence[Metric]]
+METRICS = Union[MetricLike, Sequence[MetricLike]]
 RNG = jax.Array
+Optimizer = Any
 
 # so that multiple calls return the same obj
 # this avoids JIT when supplying partial func as args
 _cached_partial = lru_cache(partial)
-
 
 @partial(struct.dataclass, frozen=False)
 class TrainIterator(Iterator):
@@ -193,7 +196,7 @@ class Trainer:
         self,
         dataset: Iterable,
         strategy: type | None = None,
-        rng_cols: Sequence[str] = [],
+        rng_cols: Sequence[str] = ["dropout"],
         init_vars: dict | None = None,
         frozen: dict | None = None,
         **kwargs,
@@ -227,8 +230,9 @@ class Trainer:
             else jax.random.PRNGKey(self.seed)
         )
 
-        rng_cols = rng_cols or []
-
+        rng_cols = rng_cols or ["dropout"]
+        if isinstance(rng_cols, str):
+            rng_cols = [rng_cols]
         seed, key = jax.random.split(seed)
         keys = jax.random.split(key, len(rng_cols))
         rngs = dict(zip(rng_cols, keys))
@@ -307,10 +311,13 @@ class Trainer:
         if strategy is None:
             strategy = self.strategy
 
+        if isinstance(metrics, str):
+            metrics = [metrics]
         try:
             iter(metrics)
         except TypeError:
             metrics = [metrics]
+        metrics = [m if isinstance(m, Metric) else LossLog(m) for m in metrics]
 
         apply_fn = _cached_partial(self.model.apply, **kwargs)
 

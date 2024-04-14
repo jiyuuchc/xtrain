@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, Sequence, Union
+from typing import Protocol, Sequence, Union, Any
 
 from functools import partial
 
@@ -15,7 +15,6 @@ class LossFunc_(Protocol):
 
 LossFunc = LossFunc_ | str
 
-
 @partial(struct.dataclass, frozen=False)
 class LossLog:
     loss_fn: LossFunc = struct.field(pytree_node=False)
@@ -23,8 +22,11 @@ class LossLog:
     cnt: float = 0.0
     sum: float = 0.0
 
-    # update() is meant to be called in JAX transformation so it cannot
-    # modify its fields. Instead it returns a new copy of self.
+    def __post_init__(self):
+        self.__name__ = _get_name(self.loss_fn)
+
+    # update() is meant to be called in JAX transformation, where objects are immutable
+    # so it returns a copy of self in order for the caller to track changes to the object.
     def update(self, batch, prediction):
         if isinstance(self.loss_fn, str):
             loss = prediction
@@ -37,8 +39,10 @@ class LossLog:
             return 0.0, self
 
         loss *= self.weight
+        self.cnt += 1
+        self.sum += loss
 
-        return loss, self.replace(cnt=self.cnt + 1, sum=self.sum + loss)
+        return loss, self
 
     def compute(self):
         return self.sum / self.cnt
@@ -48,4 +52,4 @@ class LossLog:
         self.sum = 0.0
 
     def __repr__(self) -> str:
-        return _get_name(self.loss_fn) + f": {float(self.sum / self.cnt):.4f}"
+        return self.__name__ + f": {float(self.compute()):.4f}"

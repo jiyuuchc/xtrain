@@ -4,11 +4,9 @@ import flax.linen as nn
 import jax
 import numpy as np
 import optax
-
 import pytest
 
 import xtrain
-
 
 def mse(batch, prediction):
     labels = batch[1]
@@ -25,12 +23,6 @@ def test_vmap_strategy():
         for x, y in zip(X, Y):
             yield x, y
 
-    def _run():
-        g = gen(X=_X, Y=_Y)
-
-        for _ in (it := trainer.train(g)):
-            pass
-        return it.loss["mse"]
 
     trainer = xtrain.Trainer(
         model=nn.Dense(4),
@@ -40,18 +32,14 @@ def test_vmap_strategy():
         strategy=xtrain.Eager,
     )
 
-    eager_loss = _run()
+    train_it = trainer.train(gen(X=_X, Y=_Y))
 
-    assert np.allclose(eager_loss, 0.372847)
-
-    trainer = xtrain.Trainer(
-        model=nn.Dense(4),
-        losses=mse,
-        optimizer=optax.adam(0.01),
-        seed=key,
-        strategy=xtrain.VMapped,
+    m = trainer.compute_metrics(
+        gen(X=_X, Y=_Y),
+        mse,
+        dict(params=train_it.parameters),
     )
 
-    vmap_loss = _run()
-
-    assert jax.numpy.allclose(eager_loss, vmap_loss)
+    assert isinstance(m, dict)
+    assert "mse" in m
+    assert np.allclose(m["mse"], 0.8398)

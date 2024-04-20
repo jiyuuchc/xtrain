@@ -45,7 +45,10 @@ class LossLog:
         return loss, self
 
     def compute(self):
-        return self.sum / self.cnt
+        if self.cnt == 0:
+            return 0
+        else:
+            return self.sum / self.cnt
 
     def reset(self):
         self.cnt = 0.0

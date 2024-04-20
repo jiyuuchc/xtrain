@@ -99,6 +99,13 @@ class TrainIterator(Iterator):
             for loss_log in self.loss_logs
         }
 
+    def reset(self):
+        """ Restart the dataset iteration and reset loss metrics
+        """
+        self.data = Peekable(iter(self.ctx.dataset))
+        self.reset_loss_logs()
+
+
     def reset_loss_logs(self):
         """Reset internal loss value tracking.
 
@@ -195,6 +202,7 @@ class Trainer:
     def train(
         self,
         dataset: Iterable,
+        *,
         strategy: type | None = None,
         rng_cols: Sequence[str] = ["dropout"],
         init_vars: dict | None = None,
@@ -206,13 +214,13 @@ class Trainer:
         Args:
             dataset: An iterator or iterable to supply the training data.
                 The dataset should produce ```(inputs, labels, sample_weight)```, however
-                both the labels and the sample_weight are optional. The inputs is either a tuple
-                or a dict. If the inputs is a dict, the keys are interpreted as the names for
-                keyword args of the model's __call__ function.
+                both the labels and the sample_weight are optional. The inputs is either a list 
+                (not tuple) or a dict. If latter, the keys are interpreted as the names for
+                keyword args of the model's __call__ function. 
             strategy: Optionally override the default strategy.
             rng_cols: Names of any RNG used by the model. Should be a list of strings.
             init_vars: optional variables to initialize model
-            frozen: a pytree indicating frozen parameters
+            frozen: a bool pytree (matching model parameter tree) indicating frozen parameters.
             **kwargs: Additional keyward args passed to the model. E.g. "training=True"
 
         Returns:
@@ -220,6 +228,8 @@ class Trainer:
 
         """
         config = dataclasses.replace(self, strategy=strategy or self.strategy)
+        config.dataset = dataset
+
         assert config.strategy is not None
 
         dataset_iter = Peekable(iter(dataset))

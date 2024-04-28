@@ -7,7 +7,7 @@ from functools import partial
 import jax.numpy as jnp
 from flax import struct
 
-from .utils import _get_name
+from .utils import _get_name, unpack_x_y_sample_weight
 
 class LossFunc_(Protocol):
     def __call__(self, batch: Any, prediction: Any) -> float:
@@ -28,6 +28,8 @@ class LossLog:
     # update() is meant to be called in JAX transformation, where objects are immutable
     # so it returns a copy of self in order for the caller to track changes to the object.
     def update(self, batch, prediction):
+        _, _, sample_weight = unpack_x_y_sample_weight(batch)
+
         if isinstance(self.loss_fn, str):
             loss = prediction
             for k in self.loss_fn.split("/"):
@@ -38,11 +40,12 @@ class LossLog:
         if loss is None:
             return 0.0, self
 
-        loss *= self.weight
-        self.cnt += 1
-        self.sum += loss
+        if sample_weight is not None:
+            loss *= sample_weight
+        self.cnt += loss.size
+        self.sum += loss.sum()
 
-        return loss, self
+        return loss.sum() * self.weight, self
 
     def compute(self):
         if self.cnt == 0:

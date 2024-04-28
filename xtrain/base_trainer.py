@@ -93,6 +93,10 @@ class TrainIterator(Iterator):
     def has_aux(self):
         return self.ctx.mutable or self.ctx.capture_intermediates
 
+    def __iter__(self):
+        self.data = Peekable(iter(self.ctx.dataset))
+        return self
+
     def _compute_loss_log(self) -> dict:
         return {
             _get_name(loss_log.loss_fn): loss_log.compute()
@@ -207,6 +211,7 @@ class Trainer:
         rng_cols: Sequence[str] = ["dropout"],
         init_vars: dict | None = None,
         frozen: dict | None = None,
+        method: Union[Callable[..., Any], str, None] = None,
         **kwargs,
     ) -> TrainIterator:
         """Create the training iterator
@@ -270,6 +275,7 @@ class Trainer:
                 self.model.apply,
                 mutable=self.mutable,
                 capture_intermediates=self.capture_intermediates,
+                method=method,
                 **kwargs,
             ),
             params=params,

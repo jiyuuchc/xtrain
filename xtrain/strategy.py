@@ -10,7 +10,6 @@ from . import base_trainer
 from .loss import LossLog
 from .utils import Inputs, unpack_prediction_and_state, unpack_x_y_sample_weight
 
-
 class Eager:
     @classmethod
     def loss_fn(cls, params, train_obj, batch):
@@ -20,16 +19,10 @@ class Eager:
         rngs = {
             name: jax.random.fold_in(rng, step) for name, rng in train_obj.rngs.items()
         }
-        inputs_obj = Inputs.from_value(inputs)
         variables = train_obj.variables
         variables["params"] = params
 
-        model_out = train_obj.train_state.apply_fn(
-            variables,
-            *inputs_obj.args,
-            **inputs_obj.kwargs,
-            rngs=rngs,
-        )
+        model_out = Inputs.apply(train_obj.train_state.apply_fn, variables, rngs=rngs)(inputs)
 
         prediction, _ = unpack_prediction_and_state(model_out, train_obj.has_aux)
 
@@ -54,7 +47,7 @@ class Eager:
         return state
 
     @classmethod
-    def predict(cls, apply_fn, variables, inputs):  # only if model is immutable
+    def predict(cls, apply_fn, variables, inputs):
         # print("JIT Predict")
         inputs_obj = Inputs.from_value(inputs)
         preds = apply_fn(variables, *inputs_obj.args, **inputs_obj.kwargs)
@@ -66,19 +59,37 @@ class Eager:
         train_obj: base_trainer.TrainIterator,
         batch: tp.Any,
     ) -> tuple[TrainState, tuple[LossLog], tp.Any]:
-        # print('JIT train_step')
+        try:
+            axis_index = jax.lax.axis_index("mapped")
+            train_obj = train_obj.replace(
+                rngs={
+                    name: jax.random.fold_in(key, axis_index)
+                    for name, key in train_obj.rngs.items()
+                }
+            )
+        except NameError:
+            axis_index = -1
+
         grads, (loss_logs, preds) = jax.grad(cls.loss_fn, has_aux=True)(
             train_obj.train_state.params,
             train_obj,
             batch,
         )
 
+        if axis_index >= 0:
+            grads = jax.lax.pmean(grads, axis_name="mapped")
+            # aggregate logs
+            loss_logs = jax.tree_map(partial(jax.lax.pmean, axis_name="mapped"), loss_logs)
+        
         grads = jax.tree_util.tree_map(
             lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
             grads, train_obj.frozen,
         )
-
+        
         state = train_obj.train_state.apply_gradients(grads=grads)
+
+        #         # sync batch statistics
+        #         model.map(partial(jax.lax.pmean, axis_name="mapped"), tx.BatchStat, inplace=True)
 
         return state, loss_logs, preds
 
@@ -100,44 +111,6 @@ class JIT(Core):
 
 
 class _Distributed(Eager):
-    @classmethod
-    def _train_step(
-        cls,
-        train_obj: base_trainer.TrainIterator,
-        batch: tp.Any,
-    ) -> tuple[TrainState, tp.Sequence[LossLog], tp.Any]:
-        # print("JITTTTING")
-        axis_index = jax.lax.axis_index("mapped")
-        train_obj = train_obj.replace(
-            rngs={
-                name: jax.random.fold_in(key, axis_index)
-                for name, key in train_obj.rngs.items()
-            }
-        )
-
-        grads, (loss_logs, preds) = jax.grad(cls.loss_fn, has_aux=True)(
-            train_obj.train_state.params,
-            train_obj,
-            batch,
-        )
-
-        grads = jax.lax.pmean(grads, axis_name="mapped")
-        
-        grads = jax.tree_util.tree_map(
-            lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
-            grads, train_obj.frozen,
-        )
-        
-        state = train_obj.train_state.apply_gradients(grads=grads)
-
-        # aggregate logs
-        loss_logs = jax.tree_map(partial(jax.lax.pmean, axis_name="mapped"), loss_logs)
-
-        #         # sync batch statistics
-        #         model.map(partial(jax.lax.pmean, axis_name="mapped"), tx.BatchStat, inplace=True)
-
-        return state, loss_logs, preds
-
     @classmethod
     def init_fn(cls, key, model, inputs):
         inputs = jax.tree_map(lambda v: v[0], inputs)

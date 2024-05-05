@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import functools
+
 from typing import Callable
 
 import jax
@@ -25,8 +27,7 @@ class MeanTeacher(nn.Module):
             self.teacher_fn = lambda mdl, *args, **kwargs: mdl(*args, **kwargs)
 
     def __call__(self, student_input, teacher_input=None):
-        student_input = Inputs.from_value(student_input)
-        student_out = self.student(*student_input.args, **student_input.kwargs)
+        student_out = Inputs.apply(self.student)(student_input)
 
         if not self.has_variable("teacher_variables", "teacher_params"):
             self.variables["teacher_variables"] = dict(params=jax.tree_util.tree_map(lambda x:x, self.variables["params"]["student"]))
@@ -37,8 +38,8 @@ class MeanTeacher(nn.Module):
 
         rngs = {k:self.scope.make_rng(k) for k in self.scope.rngs.keys()}
         teacher_vars = self.variables["teacher_variables"]
-        teacher_out = nn.apply(self.teacher_fn, self.student, mutable=self.scope.mutable)(
-                teacher_vars, *teacher_input.args, **teacher_input.kwargs, rngs=rngs)
+        teacher_fn = nn.apply(self.teacher_fn, self.student, mutable=self.scope.mutable)
+        teacher_out = Inputs.apply(teacher_fn, teacher_vars, rngs=rngs)(teacher_input)
 
         if self.scope.mutable is not False:
             teacher_out, teacher_vars = teacher_out
@@ -97,8 +98,9 @@ class Adversal(nn.Module):
 
         collections = gradient_reversal(collections)
 
-        dsc_main = self.discriminator(collections)
-        dsc_ref = self.discriminator(ref_inputs)
+        discriminator = Inputs.apply(self.discriminator)
+        dsc_main = discriminator(collections)
+        dsc_ref = discriminator(ref_inputs)
 
         reduction_fn = self.loss_reduction_fn or (lambda x: x)
         dsc_loss_main = jax.tree_util.tree_map(

@@ -1,3 +1,4 @@
+import functools
 import dataclasses
 import re
 from collections import deque
@@ -137,7 +138,15 @@ class Inputs(struct.PyTreeNode):
             return cls(kwargs=value)
         else:
             return cls(args=(value,))
+    
+    @classmethod
+    def apply(cls, fn, *args, **kwargs):
+        @functools.wraps(fn)
+        def _wrapped(inputs):
+            _inputs = cls.from_value(inputs)
+            return fn(*args, *_inputs.args, **kwargs, **_inputs.kwargs)
 
+        return _wrapped
 
 try:
     from torch.utils.data import DataLoader

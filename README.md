@@ -29,9 +29,7 @@ def my_loss_func(batch, prediction):
 #### Step 3: create an iterator that supplies training data
 
 ```
-my_data = itertools.cycle(
-    zip(sequence_of_inputs, sequence_of_labels)
-)
+my_data = zip(sequence_of_inputs, sequence_of_labels)
 ```
 
 #### Step 4: train
@@ -47,14 +45,43 @@ trainer = xtrain.Trainer(
 train_iter = trainer.train(my_data) # returns a iterable object
 
 # iterate the train_iter trains the model
-for step in range(train_steps):
-    model_out = next(train_iter)
-    if step // 1000 == 0:
-        print(train_iter.loss_logs)
-        train_iter.reset_loss_logs()
+for epoch in range(3):
+  for model_out in train_iter:
+    pass
+  print(train_iter.loss_logs)
+  train_iter.reset_loss_logs()
 ```
 
-### Full documentation
+### Training data format
+
+- tensowflow Dataset
+- torch dataloader
+- generator function
+- other python iterable that produce numpy data
+
+### Checkpointing
+
+train_iter is orbax compatible.
+
+```
+import orbax.checkpoint as ocp
+ocp.StandardCheckpointer().save(cp_path, args=ocp.args.StandardSave(train_iter))
+```
+
+### Freeze submodule
+```
+train_iter.freeze("submodule/Dense_0/kernel")
+```
+
+### Simple batch parallelism on multiple device
+```
+# Add a new batch dim to you dataset
+ds = ds.batch(8)
+# create trainer with the Distributed strategy
+trainer_iter = xtrain.Trainer(model, losses, optimizer, strategy=xtrain.Distributed).train(ds)
+```
+
+### API documentation
 
 https://jiyuuchc.github.io/xtrain/
 

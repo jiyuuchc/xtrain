@@ -73,6 +73,11 @@ class Eager:
             batch,
         )
 
+        grads = jax.tree_util.tree_map(
+            lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
+            grads, train_obj.frozen,
+        )
+
         state = train_obj.train_state.apply_gradients(grads=grads)
 
         return state, loss_logs, preds
@@ -117,6 +122,12 @@ class _Distributed(Eager):
         )
 
         grads = jax.lax.pmean(grads, axis_name="mapped")
+        
+        grads = jax.tree_util.tree_map(
+            lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
+            grads, train_obj.frozen,
+        )
+        
         state = train_obj.train_state.apply_gradients(grads=grads)
 
         # aggregate logs

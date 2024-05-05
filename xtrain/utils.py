@@ -170,6 +170,10 @@ try:
         def __iter__(self):
             return self.get_dataset()
 
+        @classmethod
+        def is_adaptor_for(cls, data):
+            return isinstance(data, DataLoader)
+
 except ImportError:
     TorchDataLoaderAdapter = None
 
@@ -191,6 +195,10 @@ try:
 
         def __iter__(self):
             return self._dataset.as_numpy_iterator()
+    
+        @classmethod
+        def is_adaptor_for(cls, data):
+            return isinstance(data, Dataset)
 
 except ImportError:
     TFDatasetAdapter = None
@@ -203,6 +211,24 @@ class GeneratorAdapter:
     def __iter__(self):
         return self._generator()
 
+    @classmethod
+    def is_adaptor_for(cls, data):
+        # treat any callable as potentially a generator func
+        return callable(data)
+
+def wrap_data_stream(ds):
+    all_adaptors = [TFDatasetAdapter, TorchDataLoaderAdapter, GeneratorAdapter]
+
+    for adp in all_adaptors:
+        if adp is not None and adp.is_adaptor_for(ds):
+            return adp(ds)
+
+    try:
+        iter(ds)
+    except:
+        raise ValueError(f"Unrecognized datasource {ds}")
+
+    return ds
 
 class Peekable:
     def __init__(self, iterator):

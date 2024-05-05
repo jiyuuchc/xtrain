@@ -23,6 +23,7 @@ from .utils import (
     _get_name,
     unpack_prediction_and_state,
     unpack_x_y_sample_weight,
+    wrap_data_stream
 )
 
 @runtime_checkable
@@ -76,6 +77,7 @@ class TrainIterator(Iterator):
     rngs: dict[str, RNG]
     loss_logs: tuple[LossLog]
     variables: dict = struct.field(default_factory=dict)
+    frozen: dict = struct.field(default_factory=dict, pytree_node=False)
 
     @property
     def parameters(self):
@@ -162,6 +164,33 @@ class TrainIterator(Iterator):
             pickle.dump((module, params), f)
 
 
+    def freeze(self, spec:str, *, unfreeze=False, ignore_key_error=False):
+        spec = spec.strip().strip("/").split("/")
+
+        if not ignore_key_error:
+            try:
+                sub = self.parameters
+                for k in spec:
+                    sub = sub[k]
+            except:
+                raise ValueError("The key {k} in the supplied spec doesn't exist.")
+
+        def _map_fn(path, x):
+            if len(path) < len(spec):
+                return x
+            for k, p in enumerate(path[:len(spec)]):
+                if p.key != spec[k]:
+                    return x
+
+            return not unfreeze
+
+        self.frozen = jax.tree_util.tree_map_with_path(
+            _map_fn, self.frozen
+        )
+    
+    def unfreeze(self, spec:str):
+        return self.freeze(spec, unfreeze=True)
+
 @dataclasses.dataclass
 class Trainer:
     """A general purpose FLAX model trainer. Help avoiding most of the biolerplate code when trainning with FLAX.
@@ -233,11 +262,12 @@ class Trainer:
 
         """
         config = dataclasses.replace(self, strategy=strategy or self.strategy)
-        config.dataset = dataset
+
+        config.dataset = wrap_data_stream(dataset)
 
         assert config.strategy is not None
 
-        dataset_iter = Peekable(iter(dataset))
+        dataset_iter = Peekable(iter(config.dataset))
 
         seed = (
             self.seed
@@ -260,14 +290,10 @@ class Trainer:
             init_vars = self._initialize(init_rngs, dataset_iter)
 
         if frozen is None:
-            tx = self.optimizer
-        else:
             frozen = jax.tree_util.tree_map(lambda _: False, init_vars["params"])
-            optimizers = {True: optax.set_to_zero(), False: self.optimizer}
-            tx = optax.multi_transform(
-                optimizers,
-                frozen,
-            )
+        else:
+            if jax.tree_util.tree_structure(frozen) != jax.tree_util.tree_structure(init_vars["params"]):
+                raise ValueError(f"Invalid frozen dict. Its tree stucture is different from that of the model parameters")
 
         params = init_vars.pop("params")
         train_state = TrainState.create(
@@ -279,7 +305,7 @@ class Trainer:
                 **kwargs,
             ),
             params=params,
-            tx=tx,
+            tx=self.optimizer,
         )
 
         losses = self.losses
@@ -296,6 +322,7 @@ class Trainer:
             rngs=rngs,
             loss_logs=loss_logs,
             variables=init_vars,
+            frozen=frozen,
         )
 
     def test(

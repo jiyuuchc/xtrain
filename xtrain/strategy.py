@@ -76,10 +76,12 @@ class Eager:
             batch,
         )
 
-        if axis_index >= 0:
+        try:
             grads = jax.lax.pmean(grads, axis_name="mapped")
             # aggregate logs
             loss_logs = jax.tree_map(partial(jax.lax.pmean, axis_name="mapped"), loss_logs)
+        except NameError:
+            pass
         
         grads = jax.tree_util.tree_map(
             lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
@@ -119,7 +121,7 @@ class _Distributed(Eager):
 
 class Distributed(_Distributed):
     train_step = jax.pmap(
-        _Distributed._train_step,
+        Eager.train_step,
         axis_name="mapped",
         in_axes=(None, 0),
         out_axes=(None, None, 0),
@@ -136,7 +138,7 @@ class Distributed(_Distributed):
 class VMapped(_Distributed):
     train_step = jax.jit(
         jax.vmap(
-            _Distributed._train_step,
+            Eager.train_step,
             axis_name="mapped",
             in_axes=(None, 0),
             out_axes=(None, None, 0),

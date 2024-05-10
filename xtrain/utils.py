@@ -1,6 +1,8 @@
 import functools
 import dataclasses
 import re
+import multiprocessing
+import queue
 from collections import deque
 from typing import Any, Dict, Iterable, Optional, Set, Tuple
 
@@ -118,6 +120,62 @@ def unpack_prediction_and_state(pred, mutable=None):
         return pred[0], {}
 
 
+class Peekable:
+    def __init__(self, iterator):
+        self.iterator = iterator
+        self.peeked = deque()
+
+    def __iter__(self):
+        return self.iterator
+
+    def __next__(self):
+        if self.peeked:
+            return self.peeked.popleft()
+        return next(self.iterator)
+
+    def peek(self, ahead=0):
+        while len(self.peeked) <= ahead:
+            self.peeked.append(next(self.iterator))
+        return self.peeked[ahead]
+
+
+class PrefetchIterator:
+    def __init__(self, iterator, buffer_size=1):
+        self.iterator = iterator
+        self.buffer_size = buffer_size
+        self.buffer = multiprocessing.Queue(maxsize=buffer_size)
+        self.process = multiprocessing.Process(target=self._prefetch)
+        self.process.daemon = True
+        self.process.start()
+    
+    def _prefetch(self):
+        try:
+            for item in self.iterator:
+                self.buffer.put(item)
+        except Exception as e:
+            self.buffer.put(e)  # Put exception into the buffer
+        finally:
+            self.buffer.put(StopIteration())  # Indicate end of iteration or exception
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        item = self.buffer.get()
+
+        # Raise exception if encountered in subprocess
+        if isinstance(item, Exception):
+            # only wait for termination if the exception is StopIteration
+            self.close(joining = isinstance(item, StopIteration))
+            raise item  
+        return item
+    
+    def close(self, joining=False):
+        self.process.terminate()
+        if joining:
+            self.process.join()
+
+
 class Inputs(struct.PyTreeNode):
     args: Tuple[Any, ...] = ()
     kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -214,11 +272,15 @@ except ImportError:
 
 
 class GeneratorAdapter:
-    def __init__(self, g):
+    def __init__(self, g, *, prefetch=0):
         self._generator = g
+        self._prefetch = prefetch
 
     def __iter__(self):
-        return self._generator()
+        if self._prefetch <= 0:
+            return self._generator()
+        else:
+            return PrefetchIterator(self._generator(), buffer_size=self._prefetch)
 
     @classmethod
     def is_adaptor_for(cls, data):
@@ -238,21 +300,3 @@ def wrap_data_stream(ds):
         raise ValueError(f"Unrecognized datasource {ds}")
 
     return ds
-
-class Peekable:
-    def __init__(self, iterator):
-        self.iterator = iterator
-        self.peeked = deque()
-
-    def __iter__(self):
-        return self.iterator
-
-    def __next__(self):
-        if self.peeked:
-            return self.peeked.popleft()
-        return next(self.iterator)
-
-    def peek(self, ahead=0):
-        while len(self.peeked) <= ahead:
-            self.peeked.append(next(self.iterator))
-        return self.peeked[ahead]

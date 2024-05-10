@@ -82,14 +82,13 @@ class Adversal(nn.Module):
     main_module: nn.Module
     discriminator: nn.Module
     collection_name: str|None = None
-    loss_reduction_fn: Callable|None = jnp.mean
     output_key: str = "output"
+    loss_reduction_fn: Callable|None = jnp.mean
 
-    def __call__(self, inputs, ref_inputs, *args, **kwargs):
+    def __call__(self, inputs, ref_inputs=None, *args, **kwargs):
+        reduction_fn = self.loss_reduction_fn or (lambda x: x)
 
-        inputs_obj = Inputs.from_value(inputs)
-
-        main_out = self.main_module(*inputs_obj.args, *args, **inputs_obj.kwargs, **kwargs)
+        main_out = Inputs.apply(self.main_module, *args, **kwargs)(inputs)
 
         if self.collection_name is None:
             collections = main_out
@@ -99,22 +98,22 @@ class Adversal(nn.Module):
         collections = gradient_reversal(collections)
 
         discriminator = Inputs.apply(self.discriminator)
-        dsc_main = discriminator(collections)
-        dsc_ref = discriminator(ref_inputs)
-
-        reduction_fn = self.loss_reduction_fn or (lambda x: x)
         dsc_loss_main = jax.tree_util.tree_map(
             lambda x: reduction_fn(
                 optax.sigmoid_binary_cross_entropy(x, jnp.ones_like(x))
             ),
-            dsc_main,
+            discriminator(collections),
         )
-        dsc_loss_ref = jax.tree_util.tree_map(
-            lambda x: reduction_fn(
-                optax.sigmoid_binary_cross_entropy(x, jnp.zeros_like(x))
-            ),
-            dsc_ref,
-        )
+
+        if ref_inputs is not None:
+            dsc_loss_ref = jax.tree_util.tree_map(
+                lambda x: reduction_fn(
+                    optax.sigmoid_binary_cross_entropy(x, jnp.zeros_like(x))
+                ),
+                discriminator(ref_inputs),
+            )
+        else:
+            dsc_loss_ref = None
 
         output = dict(
             dsc_loss_main = dsc_loss_main,

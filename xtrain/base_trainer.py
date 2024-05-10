@@ -95,6 +95,12 @@ class TrainIterator(Iterator):
     def has_aux(self):
         return self.ctx.mutable or self.ctx.capture_intermediates
 
+    @property
+    def vars_and_params(self):
+        v = self.variables.copy()
+        v["params"] = self.train_state["params"]
+        return v
+
     def __iter__(self):
         self.data = Peekable(iter(self.ctx.dataset))
         return self
@@ -331,6 +337,7 @@ class Trainer:
         metrics: METRICS,
         variables: dict,
         strategy: type | None = None,
+        method: Union[Callable[..., Any], str, None] = None,
         **kwargs,
     ) -> Iterator:
         """Create test/validation iterator.
@@ -362,7 +369,13 @@ class Trainer:
             metrics = [metrics]
         metrics = [m if isinstance(m, Metric) else LossLog(m) for m in metrics]
 
-        apply_fn = _cached_partial(self.model.apply, **kwargs)
+        apply_fn=_cached_partial(
+            self.model.apply,
+            mutable=self.mutable,
+            capture_intermediates=self.capture_intermediates,
+            method=method,
+            **kwargs,
+        )
 
         predict_fn = strategy.predict
 
@@ -387,3 +400,31 @@ class Trainer:
         for metrics in self.test(*args, **kwargs):
             pass
         return {_get_name(m): m.compute() for m in metrics}
+
+    def predict(self, dataset: Iterable, variables: dict, strategy: type | None = None, method: Union[Callable[..., Any], str, None] = None, **kwargs):
+        """Create predictor iterator.
+
+        Args:
+            dataset: An iterator or iterable to supply the input data.
+            variables: Model weights etc. typically get from TrainIterator
+            strategy: Optionally override the default backend.
+
+        Returns:
+            An iterator. Stepping through it will produce model predictions
+        """
+        if strategy is None:
+            strategy = self.strategy
+
+        apply_fn=_cached_partial(
+            self.model.apply,
+            mutable=self.mutable,
+            capture_intermediates=self.capture_intermediates,
+            method=method,
+            **kwargs,
+        )
+
+        predict_fn = strategy.predict
+
+        for inputs in dataset:
+            preds = predict_fn(apply_fn, variables, inputs)
+            yield preds

@@ -17,6 +17,13 @@ def _copy_tree(tree):
     }
 
 class MeanTeacher(nn.Module):
+    """ Create a mean-teacher module.
+
+    Attributes:
+        student: The student module
+        teacher_fn: By default teacher execute the student's __call__ function. This behavior can be overriden by specifying an apply_fn here.
+        momentum: The momentum of the mean teacher.
+    """
     student: nn.Module
     teacher_fn: Callable|None = None
     momentum : float = 0.995
@@ -27,9 +34,25 @@ class MeanTeacher(nn.Module):
             self.teacher_fn = lambda mdl, *args, **kwargs: mdl(*args, **kwargs)
 
     def __call__(self, student_input, teacher_input=None):
+        """ Default apply fn of the module. If use this as the apply function, make sure the mutable set include "teacher_variables" key.
+
+        Example:
+            ``` 
+            mt_module.apply(inputs, mutable="teacher_variables")
+            ```
+
+        Args:
+            student_input: The input to the student module
+            teacher_input: If not None, the teacher takes a different input than the student.
+
+        returns:
+            A dict with two keys:
+                - student_prediction: the output of the student module
+                - teacher_prediction: the output of the teacher module
+        """
         student_out = Inputs.apply(self.student)(student_input)
 
-        if not self.has_variable("teacher_variables", "teacher_params"):
+        if not self.has_variable("teacher_variables", "params"):
             self.variables["teacher_variables"] = dict(params=jax.tree_util.tree_map(lambda x:x, self.variables["params"]["student"]))
 
         if teacher_input is None:
@@ -79,6 +102,17 @@ gradient_reversal.defvjp(_gr_fwd, _gr_bwd)
 """
 
 class Adversal(nn.Module):
+    """ Create an adversal learning module.
+
+    Attributes:
+        main_module: The main (generator) module
+        discriminator: The discriminator module
+        collection_name: By default, the discriminator input is the output of the main_module. Alternatively, one can 
+            store the inputs in a module variable and specify the varibale name here.
+        output_key: The dict key of the adversal model outputs that corresponds to the main_module output
+        loss_reduction_fn: reduction function of the discriminator loss.
+    """
+
     main_module: nn.Module
     discriminator: nn.Module
     collection_name: str|None = None
@@ -86,6 +120,20 @@ class Adversal(nn.Module):
     loss_reduction_fn: Callable|None = jnp.mean
 
     def __call__(self, inputs, ref_inputs=None, *args, **kwargs):
+        """ Adversal module main function
+
+        Args:
+            inputs: The inputs to the generator.
+            ref_inputs: A "true" reference.
+            args: Additional argumnets to the generator.
+            kwargs: Additional keyward arguments to the genreator.  
+
+        Returns:
+            A dict with three keys:
+                - dsc_loss_main: Discriminator loss regarding generator output
+                - dsc_loss_main: Discriminator loss regarding the reference input
+                - output: Generator output.
+        """
         reduction_fn = self.loss_reduction_fn or (lambda x: x)
 
         main_out = Inputs.apply(self.main_module, *args, **kwargs)(inputs)

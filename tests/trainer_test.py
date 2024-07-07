@@ -57,10 +57,10 @@ def test_vmap_strategy():
         for x, y in zip(X, Y):
             yield x, y
 
-    def _run():
+    def _run(**kwargs):
         g = gen(X=_X, Y=_Y)
 
-        for _ in (it := trainer.train(g)):
+        for _ in (it := trainer.train(g, **kwargs)):
             pass
         return it.loss["mse"]
 
@@ -69,21 +69,10 @@ def test_vmap_strategy():
         losses=mse,
         optimizer=optax.adam(0.01),
         seed=key,
-        strategy=xtrain.Eager,
     )
 
-    eager_loss = _run()
+    eager_loss = _run(strategy=xtrain.Eager)
 
-    # assert np.allclose(eager_loss, 0.372847)
-
-    trainer = xtrain.Trainer(
-        model=nn.Dense(4),
-        losses=mse,
-        optimizer=optax.adam(0.01),
-        seed=key,
-        strategy=xtrain.VMapped,
-    )
-
-    vmap_loss = _run()
+    vmap_loss = _run(strategy=xtrain.VMapped)
 
     assert jax.numpy.allclose(eager_loss, vmap_loss)

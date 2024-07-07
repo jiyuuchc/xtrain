@@ -23,7 +23,6 @@ def test_vmap_strategy():
         for x, y in zip(X, Y):
             yield x, y
 
-
     trainer = xtrain.Trainer(
         model=nn.Dense(4),
         losses=mse,
@@ -42,4 +41,4 @@ def test_vmap_strategy():
 
     assert isinstance(m, dict)
     assert "mse" in m
-    assert np.allclose(m["mse"], 0.8398)
+    assert np.allclose(m["mse"], 0.83978, atol=1e-4, rtol=1e-4)

@@ -293,7 +293,7 @@ class Trainer:
             keys = jax.random.split(seed, len(rng_cols) + 1)
             init_rngs = dict(zip(rng_cols + ["params"], keys))
 
-            init_vars = self._initialize(init_rngs, dataset_iter)
+            init_vars = config._initialize(init_rngs, dataset_iter)
 
         if frozen is None:
             frozen = jax.tree_util.tree_map(lambda _: False, init_vars["params"])
@@ -379,7 +379,7 @@ class Trainer:
 
         predict_fn = strategy.predict
 
-        for data in dataset:
+        for data in wrap_data_stream(dataset):
             inputs, _, _ = unpack_x_y_sample_weight(data)
             preds = predict_fn(apply_fn, variables, inputs)
             kwargs = dict(

@@ -82,7 +82,7 @@ class Eager:
             loss_logs = jax.tree_map(partial(jax.lax.pmean, axis_name="mapped"), loss_logs)
         except NameError:
             pass
-        
+
         grads = jax.tree_util.tree_map(
             lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
             grads, train_obj.frozen,

@@ -272,6 +272,10 @@ except ImportError:
 
 
 class GeneratorAdapter:
+    """Convert a python generator function to a python iterable suitable for [lacss.train.Trainer](./#lacss.train.base_trainerxtrain.Trainer)
+    with an option to prefetch data.
+    """
+
     def __init__(self, g, *, prefetch=0):
         self._generator = g
         self._prefetch = prefetch
@@ -288,6 +292,8 @@ class GeneratorAdapter:
         return callable(data)
 
 def wrap_data_stream(ds):
+    """ Automatic data adaptor
+    """
     all_adaptors = [TFDatasetAdapter, TorchDataLoaderAdapter, GeneratorAdapter]
 
     for adp in all_adaptors:

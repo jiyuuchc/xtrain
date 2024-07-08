@@ -19,7 +19,7 @@ class Eager:
         rngs = {
             name: jax.random.fold_in(rng, step) for name, rng in train_obj.rngs.items()
         }
-        inputs.update(rngs=rngs)
+        inputs = inputs.update(rngs=rngs)
 
         variables = train_obj.variables
         variables["params"] = params
@@ -123,7 +123,7 @@ class _VMapped(Eager):
             name: jax.random.split(jax.random.fold_in(rng, step), batch_size) 
             for name, rng in train_obj.rngs.items()
         }
-        inputs.update(rngs=rngs)
+        inputs = inputs.update(rngs=rngs)
 
         variables = train_obj.variables
         variables["params"] = params
@@ -155,7 +155,6 @@ class VMapped(_VMapped):
     predict = jax.jit(
         jax.vmap(
             _VMapped.predict,
-            axis_name="mapped",
             in_axes=(None, None, 0),
         ),
         static_argnames="apply_fn",

@@ -14,15 +14,17 @@ class Eager:
     @classmethod
     def loss_fn(cls, params, train_obj, batch):
         inputs, _, _ = unpack_x_y_sample_weight(batch)
-
+        inputs = Inputs.from_value(inputs)
         step = train_obj.train_state.step
         rngs = {
             name: jax.random.fold_in(rng, step) for name, rng in train_obj.rngs.items()
         }
+        inputs.update(rngs=rngs)
+
         variables = train_obj.variables
         variables["params"] = params
 
-        model_out = Inputs.apply(train_obj.train_state.apply_fn, variables, rngs=rngs)(inputs)
+        model_out = Inputs.apply(train_obj.train_state.apply_fn, variables)(inputs)
 
         prediction, _ = unpack_prediction_and_state(model_out, train_obj.has_aux)
 
@@ -82,7 +84,7 @@ class Eager:
             loss_logs = jax.tree_map(partial(jax.lax.pmean, axis_name="mapped"), loss_logs)
         except NameError:
             pass
-
+        
         grads = jax.tree_util.tree_map(
             lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
             grads, train_obj.frozen,
@@ -107,10 +109,57 @@ class Core(Eager):
 
         return state
 
-
 class JIT(Core):
     train_step = jax.jit(Core.train_step)
 
+class _VMapped(Eager):
+    @classmethod
+    def loss_fn(cls, params, train_obj, batch):
+        inputs, _, _ = unpack_x_y_sample_weight(batch)
+        inputs = Inputs.from_value(inputs)
+        batch_size = jax.tree_util.tree_leaves(batch)[0].shape[0]
+        step = train_obj.train_state.step
+        rngs = {
+            name: jax.random.split(jax.random.fold_in(rng, step), batch_size) 
+            for name, rng in train_obj.rngs.items()
+        }
+        inputs.update(rngs=rngs)
+
+        variables = train_obj.variables
+        variables["params"] = params
+
+        model_out = jax.vmap(Inputs.apply(train_obj.train_state.apply_fn, variables))(inputs)
+
+        prediction, _ = unpack_prediction_and_state(model_out, train_obj.has_aux)
+
+        args = dict(
+            batch=batch,
+            prediction=prediction,
+        )
+
+        losses, loss_logs = zip(
+            *[loss_log.update(**args) for loss_log in train_obj.loss_logs]
+        )
+        total_loss = sum(losses)
+
+        return total_loss, (loss_logs, model_out)
+    
+    @classmethod
+    def init_fn(cls, key, model, inputs):
+        inputs = jax.tree_util.tree_map(lambda v:v[0], inputs)
+        return Eager.init_fn(key, model, inputs)
+
+class VMapped(_VMapped):
+    train_step = jax.jit(_VMapped.train_step)
+
+    predict = jax.jit(
+        jax.vmap(
+            _VMapped.predict,
+            axis_name="mapped",
+            in_axes=(None, None, 0),
+        ),
+        static_argnames="apply_fn",
+    )
 
 class _Distributed(Eager):
     @classmethod
@@ -135,21 +184,3 @@ class Distributed(_Distributed):
     )
 
 
-class VMapped(_Distributed):
-    train_step = jax.jit(
-        jax.vmap(
-            Eager.train_step,
-            axis_name="mapped",
-            in_axes=(None, 0),
-            out_axes=(None, None, 0),
-        ),
-    )
-
-    predict = jax.jit(
-        jax.vmap(
-            Eager.predict,
-            axis_name="mapped",
-            in_axes=(None, None, 0),
-        ),
-        static_argnames="apply_fn",
-    )

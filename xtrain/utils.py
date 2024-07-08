@@ -201,8 +201,9 @@ class Inputs(struct.PyTreeNode):
     def apply(cls, fn, *args, **kwargs):
         @functools.wraps(fn)
         def _wrapped(inputs):
-            _inputs = cls.from_value(inputs)
-            return fn(*args, *_inputs.args, **kwargs, **_inputs.kwargs)
+            if not isinstance(inputs, Inputs):
+                inputs = cls.from_value(inputs)                
+            return fn(*args, *inputs.args, **kwargs, **inputs.kwargs)
 
         return _wrapped
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, Sequence, Union, Any
+from typing import Protocol, Sequence, Any
 
 from functools import partial
 

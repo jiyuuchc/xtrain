@@ -8,9 +8,10 @@ import jax.numpy as jnp
 from flax import struct
 
 from .utils import _get_name, unpack_x_y_sample_weight
+from jax.typing import ArrayLike
 
 class LossFunc_(Protocol):
-    def __call__(self, batch: Any, prediction: Any) -> float:
+    def __call__(self, batch: Any, prediction: Any) -> ArrayLike | tuple[ArrayLike, ArrayLike]:
         ...
 
 LossFunc = LossFunc_ | str
@@ -39,13 +40,20 @@ class LossLog:
 
         if loss is None:
             return 0.0, self
+    
+        try:
+            loss_v, cnts = loss
+        except:
+            loss_v = loss
+            cnts = jnp.ones_like(loss_v)
 
         if sample_weight is not None:
-            loss *= sample_weight
-        self.cnt += loss.size
-        self.sum += loss.sum()
+            loss_v *= sample_weight
 
-        return loss.sum() * self.weight, self
+        self.cnt += jnp.asarray(cnts).sum()
+        self.sum += loss_v.sum()
+
+        return loss_v.sum() * self.weight, self
 
     def compute(self):
         if self.cnt == 0:

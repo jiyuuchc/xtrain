@@ -170,16 +170,24 @@ class TrainIterator(Iterator):
             pickle.dump((module, params), f)
 
 
-    def freeze(self, spec:str, *, unfreeze=False, ignore_key_error=False):
+    def freeze(self, spec:str, *, unfreeze=False):
+        """ Freeze some parameters
+
+        Args:
+            spec: a "/" separate string indicating the path of the parameters. The parameters 
+              matching the path and all its children parameters will be frozen
+        
+        KeywordArgs:
+            unfreeze: unfreeze instead.
+        """
         spec = spec.strip().strip("/").split("/")
 
-        if not ignore_key_error:
-            try:
-                sub = self.parameters
-                for k in spec:
-                    sub = sub[k]
-            except:
-                raise ValueError("The key {k} in the supplied spec doesn't exist.")
+        try:
+            sub = self.parameters
+            for k in spec:
+                sub = sub[k]
+        except NameError:
+            raise ValueError(f"The key '{k}' in the supplied spec '{spec}' doesn't exist.")
 
         def _map_fn(path, x):
             if len(path) < len(spec):
@@ -195,7 +203,14 @@ class TrainIterator(Iterator):
         )
     
     def unfreeze(self, spec:str):
+        """ Unfreeze some parameters. See [freeze() fucntion](./#lacss.train.base_trainer.TrainIterator.freeze)
+
+        Args:
+            spec: a "/" separate string indicating the path of the parameters. The parameters 
+              matching the path and all its children parameters will be unfrozen
+        """
         return self.freeze(spec, unfreeze=True)
+    
 
 @dataclasses.dataclass
 class Trainer:

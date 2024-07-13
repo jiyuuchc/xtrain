@@ -80,6 +80,10 @@ class TrainIterator(Iterator):
     frozen: dict = struct.field(default_factory=dict, pytree_node=False)
 
     @property
+    def loss_fns(self):
+        return (loss_log.loss_fn for loss_log in self.loss_logs)
+
+    @property
     def parameters(self):
         return self.train_state.params
 
@@ -133,13 +137,16 @@ class TrainIterator(Iterator):
 
         batch = next(self.data)
 
-        train_state, loss_logs, preds = train_fn(self, batch)
+        train_state, losses, preds = train_fn(self, batch)
 
         preds, variables = unpack_prediction_and_state(preds, self.has_aux)
 
         self.train_state = train_state
-        self.loss_logs = loss_logs
         self.variables = variables
+
+        for loss_log, loss in zip(self.loss_logs, losses):
+            loss_log.cnt += 1
+            loss_log.sum += loss
 
         return preds
 
@@ -261,7 +268,7 @@ class Trainer:
         rng_cols: Sequence[str] = ["dropout"],
         init_vars: dict | None = None,
         frozen: dict | None = None,
-        method: Union[Callable[..., Any], str, None] = None,
+        # method: Union[Callable[..., Any], str, None] = None,
         **kwargs,
     ) -> TrainIterator:
         """Create the training iterator
@@ -318,11 +325,13 @@ class Trainer:
 
         params = init_vars.pop("params")
         train_state = TrainState.create(
-            apply_fn=_cached_partial(
-                self.model.apply,
-                mutable=self.mutable,
-                capture_intermediates=self.capture_intermediates,
-                method=method,
+            apply_fn = _cached_partial(
+                nn.apply(
+                    config.strategy.method,
+                    self.model,
+                    mutable=self.mutable,
+                    capture_intermediates=self.capture_intermediates,
+                ),
                 **kwargs,
             ),
             params=params,

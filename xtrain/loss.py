@@ -26,8 +26,6 @@ class LossLog:
     def __post_init__(self):
         self.__name__ = _get_name(self.loss_fn)
 
-    # update() is meant to be called in JAX transformation, where objects are immutable
-    # so it returns a copy of self in order for the caller to track changes to the object.
     def update(self, batch, prediction):
         _, _, sample_weight = unpack_x_y_sample_weight(batch)
 
@@ -38,22 +36,19 @@ class LossLog:
         else:
             loss = self.loss_fn(batch, prediction)
 
-        if loss is None:
-            return 0.0, self
-    
-        try:
-            loss_v, cnts = loss
-        except:
-            loss_v = loss
-            cnts = jnp.ones_like(loss_v)
+        if loss is not None:
+            loss = jnp.asarray(loss)
 
-        if sample_weight is not None:
-            loss_v *= sample_weight
+            if sample_weight is not None:
+                loss *= sample_weight
 
-        self.cnt += jnp.asarray(cnts).sum()
-        self.sum += loss_v.sum()
+            if loss.ndim > 0:
+                self.cnt += loss.shape[0]
+            else:
+                self.cnt += 1
 
-        return loss_v.sum() * self.weight, self
+            self.sum += loss.sum()
+
 
     def compute(self):
         if self.cnt == 0:

@@ -67,7 +67,7 @@ def _get_name(obj) -> str:
     if isinstance(obj, str):
         return obj.split("/")[-1]
     elif hasattr(obj, "name") and obj.name:
-        return obj.name
+        return _lower_snake_case(obj.name)
     elif hasattr(obj, "func") and obj.func.__name__:
         return _lower_snake_case(obj.func.__name__)
     elif hasattr(obj, "__name__") and obj.__name__:

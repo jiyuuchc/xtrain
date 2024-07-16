@@ -292,10 +292,38 @@ class GeneratorAdapter:
         # treat any callable as potentially a generator func
         return callable(data)
 
+class MultiDatasetAdaptor:
+    """Adapte a Mapping[dataset, probability]
+    """
+    def __init__(self, data):
+        self.ds = data["datasets"]
+        self.prob = data["weights"]
+        self._iterators = None
+
+    def __iter__(self):
+        self._iterators = [iter(wrap_data_stream(ds)) for ds in self.ds]
+        return self
+
+    def __next__(self):
+        import random
+        ds_iter = random.choices(self._iterators, weights=self.prob, k=1)[0]
+        return next(ds_iter)
+
+    @classmethod
+    def is_adaptor_for(cls, data):
+        # treat any callable as potentially a generator func
+        try:
+            _ = data["datasets"]
+        except:
+            return False
+            
+        return True
+
+
 def wrap_data_stream(ds):
     """ Automatic data adaptor
     """
-    all_adaptors = [TFDatasetAdapter, TorchDataLoaderAdapter, GeneratorAdapter]
+    all_adaptors = [TFDatasetAdapter, TorchDataLoaderAdapter, GeneratorAdapter, MultiDatasetAdaptor]
 
     for adp in all_adaptors:
         if adp is not None and adp.is_adaptor_for(ds):
@@ -307,3 +335,5 @@ def wrap_data_stream(ds):
         raise ValueError(f"Unrecognized datasource {ds}")
 
     return ds
+
+    

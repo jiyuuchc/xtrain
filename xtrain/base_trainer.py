@@ -159,6 +159,7 @@ class TrainIterator(Iterator):
             sub_module: Optionally only save a sub_module of the model
                 by specifying the name
         """
+        import cloudpickle
         module = self.ctx.model
         params = self.parameters
 
@@ -174,7 +175,7 @@ class TrainIterator(Iterator):
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "wb") as f:
-            pickle.dump((module, params), f)
+            cloudpickle.dump((module, params), f)
 
 
     def freeze(self, spec:str, *, unfreeze=False):

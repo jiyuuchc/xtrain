@@ -12,9 +12,12 @@ from .utils import Inputs, unpack_prediction_and_state, unpack_x_y_sample_weight
 
 class Eager:
     @classmethod
-    def method(cls, module, train_obj, batch, **kwargs):
+    def method(cls, module, train_obj, batch, method=None, **kwargs):
         inputs, _, sample_weight = unpack_x_y_sample_weight(batch)
-        prediction = Inputs.apply(module, **kwargs)(inputs)
+        if method is None:
+            prediction = Inputs.apply(module, **kwargs)(inputs)
+        else:
+            prediction = Inputs.apply(method, module, **kwargs)(inputs)
 
         losses = []
         for loss_fn in train_obj.loss_fns:

@@ -269,7 +269,7 @@ class Trainer:
         rng_cols: Sequence[str] = ["dropout"],
         init_vars: dict | None = None,
         frozen: dict | None = None,
-        # method: Union[Callable[..., Any], str, None] = None,
+        method: Union[Callable[..., Any], None] = None,
         **kwargs,
     ) -> TrainIterator:
         """Create the training iterator
@@ -333,6 +333,7 @@ class Trainer:
                     mutable=self.mutable,
                     capture_intermediates=self.capture_intermediates,
                 ),
+                method = method,
                 **kwargs,
             ),
             params=params,

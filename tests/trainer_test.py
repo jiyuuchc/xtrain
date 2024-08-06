@@ -20,8 +20,7 @@ def gen(X=_X, Y=_Y):
 
 def mse(batch, prediction):
     labels = batch[1]
-    batch_size = labels.size / 4
-    return ((prediction - labels) ** 2).mean() * batch_size
+    return ((prediction - labels) ** 2).mean()
 
 def test_trainer():
     trainer = xtrain.Trainer(

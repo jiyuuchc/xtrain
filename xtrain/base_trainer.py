@@ -137,16 +137,13 @@ class TrainIterator(Iterator):
 
         batch = next(self.data)
 
-        train_state, losses, preds = train_fn(self, batch)
+        train_state, loss_logs, preds = train_fn(self, batch)
 
         preds, variables = unpack_prediction_and_state(preds, self.has_aux)
 
         self.train_state = train_state
         self.variables = variables
-
-        for loss_log, loss in zip(self.loss_logs, losses):
-            loss_log.cnt += 1
-            loss_log.sum += loss
+        self.loss_logs = loss_logs
 
         return preds
 
@@ -327,12 +324,9 @@ class Trainer:
         params = init_vars.pop("params")
         train_state = TrainState.create(
             apply_fn = _cached_partial(
-                nn.apply(
-                    config.strategy.method,
-                    self.model,
-                    mutable=self.mutable,
-                    capture_intermediates=self.capture_intermediates,
-                ),
+                self.model.apply,
+                mutable=self.mutable,
+                capture_intermediates=self.capture_intermediates,
                 method = method,
                 **kwargs,
             ),

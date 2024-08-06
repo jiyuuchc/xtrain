@@ -25,10 +25,8 @@ class LossLog:
 
     def __post_init__(self):
         self.__name__ = _get_name(self.loss_fn)
-
-    def update(self, batch, prediction):
-        _, _, sample_weight = unpack_x_y_sample_weight(batch)
-
+    
+    def compute_loss(self, batch, prediction):
         if isinstance(self.loss_fn, str):
             loss = prediction
             for k in self.loss_fn.split("/"):
@@ -36,19 +34,22 @@ class LossLog:
         else:
             loss = self.loss_fn(batch, prediction)
 
+        return loss
+
+    def update(self, batch, prediction):
+        _, _, sample_weight = unpack_x_y_sample_weight(batch)
+
+        loss = self.compute_loss(batch, prediction)
+
         if loss is not None:
             loss = jnp.asarray(loss)
 
-            if sample_weight is not None:
-                loss *= sample_weight
+            if sample_weight is None:
+                sample_weight = jnp.ones_like(loss)
+            loss = sample_weight * loss
 
-            if loss.ndim > 0:
-                self.cnt += loss.shape[0]
-            else:
-                self.cnt += 1
-
+            self.cnt += sample_weight.sum()
             self.sum += loss.sum()
-
 
     def compute(self):
         if self.cnt == 0:

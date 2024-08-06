@@ -114,10 +114,11 @@ def unpack_prediction_and_state(pred, mutable=None):
             return pred[0], pred[1]
         else:
             return pred, {}
-    if isinstance(pred, tuple):
+
+    if isinstance(pred, tuple) and len(pred) == 2:
         return pred[0], pred[1]
     else:
-        return pred[0], {}
+        return pred, {}
 
 
 class Peekable:

@@ -4,6 +4,7 @@ import typing as tp
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 from flax.training.train_state import TrainState
 
 from . import base_trainer
@@ -12,35 +13,9 @@ from .utils import Inputs, unpack_prediction_and_state, unpack_x_y_sample_weight
 
 class Eager:
     @classmethod
-    def method(cls, module, train_obj, batch, method=None, **kwargs):
-        inputs, _, sample_weight = unpack_x_y_sample_weight(batch)
-        if method is None:
-            prediction = Inputs.apply(module, **kwargs)(inputs)
-        else:
-            prediction = Inputs.apply(method, module, **kwargs)(inputs)
-
-        losses = []
-        for loss_fn in train_obj.loss_fns:
-            if isinstance(loss_fn, str):
-                loss = prediction
-                for k in loss_fn.split("/"):
-                    loss = loss[k]
-            else:
-                loss = loss_fn(batch, prediction)
-
-            if loss is None:
-                loss = 0.
-
-            elif sample_weight is not None:
-                loss *= sample_weight
-
-            losses.append(jax.numpy.asarray(loss).sum())
-
-        return prediction, losses
-
-
-    @classmethod
     def loss_fn(cls, params, train_obj, batch):
+        inputs, _, sample_weight = unpack_x_y_sample_weight(batch)
+
         step = train_obj.train_state.step
         rngs = {
             name: jax.random.fold_in(rng, step) for name, rng in train_obj.rngs.items()
@@ -49,18 +24,35 @@ class Eager:
         variables = train_obj.variables
         variables["params"] = params
 
-        model_out = train_obj.train_state.apply_fn(
+        model_out = Inputs.apply(
+            train_obj.train_state.apply_fn,
             variables, 
             rngs=rngs, 
-            train_obj=train_obj,
-            batch=batch,
-        )
+        )(inputs)
 
-        (prediction, losses), new_variables = unpack_prediction_and_state(model_out, train_obj.has_aux)
+        prediction, new_variables = unpack_prediction_and_state(model_out, train_obj.has_aux)
+
+        losses, loss_logs = [], []
+        for loss_fn in train_obj.loss_logs:
+            loss = loss_fn.compute_loss(batch, prediction)
+            if loss is None:
+                loss = 0
+            else:
+                if sample_weight is None:
+                    sample_weight = jnp.ones_like(loss)
+
+                loss = sample_weight * loss
+                loss_fn = loss_fn.replace(
+                    cnt = loss_fn.cnt + sample_weight.sum(),
+                    sum = loss_fn.sum + loss.sum(),
+                )
+
+            losses.append(loss.sum())
+            loss_logs.append(loss_fn)
 
         total_loss = sum(losses)
 
-        return total_loss, ((prediction, new_variables), losses)
+        return total_loss, (model_out, loss_logs)
 
 
     @classmethod
@@ -129,37 +121,46 @@ class JIT(Core):
 class _VMapped(Eager):
     @classmethod
     def loss_fn(cls, params, train_obj, batch):
-        inputs, _, _ = unpack_x_y_sample_weight(batch)
+        inputs, _, sample_weight = unpack_x_y_sample_weight(batch)
         inputs = Inputs.from_value(inputs)
+
+        # inputs = Inputs.from_value(inputs)
         batch_size = jax.tree_util.tree_leaves(batch)[0].shape[0]
         step = train_obj.train_state.step
         rngs = {
             name: jax.random.split(jax.random.fold_in(rng, step), batch_size) 
             for name, rng in train_obj.rngs.items()
         }
+        inputs = inputs.update(rngs=rngs)
 
         variables = train_obj.variables
         variables["params"] = params
 
-        model_out = jax.vmap(
-            lambda v, r, t, b: train_obj.train_state.apply_fn(
-                v, rngs=r, train_obj=t, batch=b,
-            ),
-            in_axes=(None, 0, None, 0),
-        )(
+        model_out = jax.vmap(Inputs.apply(
+            train_obj.train_state.apply_fn,
             variables, 
-            rngs, 
-            train_obj,
-            batch,
-        )
+        ))(inputs)
 
-        (prediction, losses), new_variables = unpack_prediction_and_state(model_out, train_obj.has_aux)
+        prediction, new_variables = unpack_prediction_and_state(model_out, train_obj.has_aux)
 
-        losses = [loss.sum(axis=0) for loss in losses]
+        losses, loss_logs = [], []
+        for loss_fn in train_obj.loss_logs:
+            loss = jax.vmap(loss_fn.compute_loss)(batch, prediction)
+            if sample_weight is None:
+                sample_weight = jnp.ones_like(loss)
+
+            loss = sample_weight * loss
+            loss_fn = loss_fn.replace(
+                cnt = loss_fn.cnt + sample_weight.sum(),
+                sum = loss_fn.sum + loss.sum(),
+            )
+
+            losses.append(loss.sum())
+            loss_logs.append(loss_fn)
 
         total_loss = sum(losses)
 
-        return total_loss, ((prediction, new_variables), losses)
+        return total_loss, (model_out, tuple(loss_logs))
 
 
     @classmethod
@@ -201,5 +202,3 @@ class Distributed(_Distributed):
         in_axes=(None, None, 0),
         static_broadcasted_argnums=0,
     )
-
-

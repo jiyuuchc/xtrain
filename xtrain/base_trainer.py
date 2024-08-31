@@ -175,7 +175,7 @@ class TrainIterator(Iterator):
             cloudpickle.dump((module, params), f)
 
 
-    def freeze(self, spec:str, *, unfreeze=False):
+    def freeze(self, spec:str="", *, unfreeze=False):
         """ Freeze some parameters
 
         Args:
@@ -186,6 +186,10 @@ class TrainIterator(Iterator):
             unfreeze: unfreeze instead.
         """
         spec = spec.strip().strip("/").split("/")
+
+        if spec == ['']:
+            self.frozen = jax.tree_util.tree_map(lambda _: not unfreeze, self.frozen)
+            return
 
         try:
             sub = self.parameters
@@ -207,7 +211,7 @@ class TrainIterator(Iterator):
             _map_fn, self.frozen
         )
     
-    def unfreeze(self, spec:str):
+    def unfreeze(self, spec:str=""):
         """ Unfreeze some parameters. See [freeze() fucntion](./#lacss.train.base_trainer.TrainIterator.freeze)
 
         Args:

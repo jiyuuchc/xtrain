@@ -101,10 +101,10 @@ class Eager:
         except NameError:
             pass
 
-        grads = jax.tree_util.tree_map(
-            lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
-            grads, train_obj.frozen,
-        )
+        # grads = jax.tree_util.tree_map(
+        #     lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
+        #     grads, train_obj.frozen,
+        # )
 
         state = train_obj.train_state.apply_gradients(grads=grads)
 

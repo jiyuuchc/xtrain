@@ -33,16 +33,32 @@ def test_freeze_fn():
     trainer = xtrain.Trainer(
         model=M(),
         losses=mse,
-        optimizer=optax.adam(0.01),
+        optimizer=optax.adamw(0.01),
         seed=key,
         strategy=xtrain.Eager,
     )
     train_it = trainer.train(gen)
 
+    # freeze partial params
+    params_copy = jax.tree_util.tree_map(lambda x: x.copy(), train_it.parameters["sub1"]['kernel'])
     train_it.freeze("sub1/bias")
-
     assert train_it.frozen["sub1"]["bias"] is True
-
     next(train_it)
-
+    next(train_it) # step twice to force param update
     assert jax.numpy.all(train_it.parameters["sub1"]["bias"] == 0)
+    for x, y in zip(
+        jax.tree_util.tree_leaves(params_copy), 
+        jax.tree_util.tree_leaves(train_it.parameters["sub1"]['kernel'])
+    ):
+        assert not jax.numpy.allclose(x, y)
+
+    # freeze all params
+    params_copy = jax.tree_util.tree_map(lambda x: x.copy(), train_it.parameters["sub1"])
+    train_it.freeze("sub1")
+    next(train_it)
+    next(train_it)
+    for x, y in zip(
+        jax.tree_util.tree_leaves(params_copy), 
+        jax.tree_util.tree_leaves(train_it.parameters["sub1"])
+    ):
+        assert jax.numpy.allclose(x, y)

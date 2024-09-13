@@ -210,6 +210,17 @@ class TrainIterator(Iterator):
         self.frozen = jax.tree_util.tree_map_with_path(
             _map_fn, self.frozen
         )
+
+        self.train_state = TrainState.create(
+            apply_fn=self.train_state.apply_fn,
+            params=self.train_state.params,
+            tx=optax.multi_transform({
+                True: optax.set_to_zero(),
+                False: self.ctx.optimizer,                
+            }, self.frozen)
+        )
+
+        
     
     def unfreeze(self, spec:str=""):
         """ Unfreeze some parameters. See [freeze() fucntion](./#lacss.train.base_trainer.TrainIterator.freeze)
@@ -335,7 +346,11 @@ class Trainer:
                 **kwargs,
             ),
             params=params,
-            tx=self.optimizer,
+            tx = optax.multi_transform({
+                True: optax.set_to_zero(),
+                False: self.optimizer,
+            }, frozen)
+            # tx=self.optimizer,
         )
 
         losses = self.losses

@@ -139,6 +139,9 @@ class TrainIterator(Iterator):
 
         train_state, loss_logs, preds = train_fn(self, batch)
 
+        for loss_log in loss_logs:
+            assert not jnp.isnan(loss_log.total).any(), f"{loss_log}"
+        
         preds, variables = unpack_prediction_and_state(preds, self.has_aux)
 
         self.train_state = train_state
@@ -156,7 +159,7 @@ class TrainIterator(Iterator):
             sub_module: Optionally only save a sub_module of the model
                 by specifying the name
         """
-        import cloudpickle
+        import pickle
         module = self.ctx.model
         params = self.parameters
 
@@ -172,7 +175,7 @@ class TrainIterator(Iterator):
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, "wb") as f:
-            cloudpickle.dump((module, params), f)
+            pickle.dump((module, params), f)
 
 
     def freeze(self, spec:str="", *, unfreeze=False):
@@ -219,8 +222,6 @@ class TrainIterator(Iterator):
                 False: self.ctx.optimizer,                
             }, self.frozen)
         )
-
-        
     
     def unfreeze(self, spec:str=""):
         """ Unfreeze some parameters. See [freeze() fucntion](./#lacss.train.base_trainer.TrainIterator.freeze)
@@ -267,11 +268,11 @@ class Trainer:
     seed: int | RNG = 42
     strategy: type = JIT
 
-    def _initialize(self, rng: RNG, data: Iterator) -> dict:
+    def _initialize(self, rng: RNG, data: Iterator, method=None) -> dict:
         peek = data.peek()
         inputs, _, _ = unpack_x_y_sample_weight(peek)
 
-        return self.strategy.init_fn(rng, self.model, inputs)
+        return self.strategy.init_fn(rng, self.model, inputs, method)
 
     def train(
         self,
@@ -328,7 +329,7 @@ class Trainer:
             keys = jax.random.split(seed, len(rng_cols) + 1)
             init_rngs = dict(zip(rng_cols + ["params"], keys))
 
-            init_vars = config._initialize(init_rngs, dataset_iter)
+            init_vars = config._initialize(init_rngs, dataset_iter, method=method)
 
         if frozen is None:
             frozen = jax.tree_util.tree_map(lambda _: False, init_vars["params"])
@@ -430,6 +431,7 @@ class Trainer:
 
             yield metrics
 
+
     def compute_metrics(self, *args, **kwargs) -> dict:
         """A convient function to compute all metrics. See [test() fucntion](./#lacss.train.base_trainer.Trainer.test)
 
@@ -439,6 +441,7 @@ class Trainer:
         for metrics in self.test(*args, **kwargs):
             pass
         return {_get_name(m): m.compute() for m in metrics}
+
 
     def predict(self, dataset: Iterable, variables: dict, strategy: type | None = None, method: Union[Callable[..., Any], str, None] = None, **kwargs):
         """Create predictor iterator.

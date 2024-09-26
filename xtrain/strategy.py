@@ -5,6 +5,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import flax.linen as nn
 from flax.training.train_state import TrainState
 
 from . import base_trainer
@@ -44,7 +45,7 @@ class Eager:
                 loss = sample_weight * loss
                 loss_fn = loss_fn.replace(
                     cnt = loss_fn.cnt + sample_weight.sum(),
-                    sum = loss_fn.sum + loss.sum(),
+                    total = loss_fn.total + loss.sum(),
                 )
 
             losses.append(loss.sum())
@@ -56,10 +57,15 @@ class Eager:
 
 
     @classmethod
-    def init_fn(cls, key, model, inputs):
+    def init_fn(cls, key, model, inputs, method=None):
         inputs_obj = Inputs.from_value(inputs)
 
-        state = model.init(key, *inputs_obj.args, **inputs_obj.kwargs)
+        if method is None:
+            fn = model.init
+        else:
+            fn = nn.init(method, model)
+
+        state = fn(key, *inputs_obj.args, **inputs_obj.kwargs)
 
         return state
 
@@ -152,7 +158,7 @@ class _VMapped(Eager):
             loss = sample_weight * loss
             loss_fn = loss_fn.replace(
                 cnt = loss_fn.cnt + sample_weight.sum(),
-                sum = loss_fn.sum + loss.sum(),
+                total = loss_fn.total + loss.sum(),
             )
 
             losses.append(loss.sum())
@@ -164,9 +170,9 @@ class _VMapped(Eager):
 
 
     @classmethod
-    def init_fn(cls, key, model, inputs):
+    def init_fn(cls, key, model, inputs, method=None):
         inputs = jax.tree_util.tree_map(lambda v:v[0], inputs)
-        return Eager.init_fn(key, model, inputs)
+        return Eager.init_fn(key, model, inputs, method)
 
 
 class VMapped(_VMapped):
@@ -183,9 +189,9 @@ class VMapped(_VMapped):
 
 class _Distributed(Eager):
     @classmethod
-    def init_fn(cls, key, model, inputs):
+    def init_fn(cls, key, model, inputs, method):
         inputs = jax.tree_map(lambda v: v[0], inputs)
-        return Eager.init_fn(key, model, inputs)
+        return Eager.init_fn(key, model, inputs, method)
 
 
 class Distributed(_Distributed):

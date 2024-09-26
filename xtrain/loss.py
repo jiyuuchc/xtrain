@@ -20,8 +20,8 @@ LossFunc = LossFunc_ | str
 class LossLog:
     loss_fn: LossFunc = struct.field(pytree_node=False)
     weight: float = 1.0
-    cnt: float = 0.0
-    sum: float = 0.0
+    cnt: float = jnp.array(0.0)
+    total: float = jnp.array(0.0)
 
     def __post_init__(self):
         self.__name__ = _get_name(self.loss_fn)
@@ -49,17 +49,17 @@ class LossLog:
             loss = sample_weight * loss
 
             self.cnt += sample_weight.sum()
-            self.sum += loss.sum()
+            self.total += loss.sum()
 
     def compute(self):
         if self.cnt == 0:
             return 0
         else:
-            return self.sum / self.cnt
+            return self.total / self.cnt
 
     def reset(self):
-        self.cnt = 0.0
-        self.sum = 0.0
+        self.cnt = jnp.array(0.0)
+        self.total = jnp.array(0.0)
 
     def __repr__(self) -> str:
         return self.__name__ + f": {float(self.compute()):.4f}"

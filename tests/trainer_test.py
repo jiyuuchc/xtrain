@@ -28,7 +28,7 @@ def test_trainer():
         losses=mse,
         optimizer=optax.adam(0.01),
         seed=key,
-        strategy=xtrain.Eager,
+        strategy=xtrain.Core,
     )
     train_it = trainer.train(
         xtrain.GeneratorAdapter(gen)
@@ -71,8 +71,8 @@ def test_vmap_strategy():
         seed=key,
     )
 
-    eager_loss = _run(strategy=xtrain.Eager)
+    core_loss = _run(strategy=xtrain.Core)
 
     vmap_loss = _run(strategy=xtrain.VMapped)
 
-    assert jax.numpy.allclose(eager_loss, vmap_loss)
+    assert jax.numpy.allclose(core_loss, vmap_loss)

@@ -17,7 +17,7 @@ from flax.core.scope import CollectionFilter
 from flax.training.train_state import TrainState
 
 from .loss import LossLog, LossFunc
-from .strategy import JIT
+from .strategy import Core
 from .utils import (
     Peekable,
     _get_name,
@@ -44,6 +44,7 @@ Optimizer = Any
 # so that multiple calls return the same obj
 # this avoids JIT when supplying partial func as args
 _cached_partial = lru_cache(partial)
+_cached_jit = lru_cache(jax.jit)
 
 @partial(struct.dataclass, frozen=False)
 class TrainIterator(Iterator):
@@ -70,7 +71,6 @@ class TrainIterator(Iterator):
     A caveat is that the checkpoint does not save the current state of the dataset.
 
     """
-
     ctx: Trainer = struct.field(pytree_node=False)
     data: Iterator = struct.field(pytree_node=False)
     train_state: TrainState
@@ -78,6 +78,8 @@ class TrainIterator(Iterator):
     loss_logs: tuple[LossLog]
     variables: dict = struct.field(default_factory=dict)
     frozen: dict = struct.field(default_factory=dict, pytree_node=False)
+    eager: bool = False
+    has_aux: bool = struct.field(default=False, pytree_node=False)
 
     @property
     def loss_fns(self):
@@ -94,10 +96,6 @@ class TrainIterator(Iterator):
     @property
     def loss(self):
         return self._compute_loss_log()
-
-    @property
-    def has_aux(self):
-        return self.ctx.mutable or self.ctx.capture_intermediates
 
     @property
     def vars_and_params(self):
@@ -133,20 +131,18 @@ class TrainIterator(Iterator):
             loss.reset()
 
     def __next__(self):
-        train_fn = self.ctx.strategy.train_step
+        train_fn = _cached_jit(self.ctx.strategy.train_step) if not self.eager else self.ctx.strategy.train_step
 
         batch = next(self.data)
 
-        train_state, loss_logs, preds = train_fn(self, batch)
+        preds, new_it = train_fn(self, batch)
 
-        for loss_log in loss_logs:
+        for loss_log in new_it.loss_logs:
             assert not jnp.isnan(loss_log.total).any(), f"{loss_log}"
         
-        preds, variables = unpack_prediction_and_state(preds, self.has_aux)
-
-        self.train_state = train_state
-        self.variables = variables
-        self.loss_logs = loss_logs
+        self.train_state = new_it.train_state
+        self.variables = new_it.variables
+        self.loss_logs = new_it.loss_logs
 
         return preds
 
@@ -192,27 +188,27 @@ class TrainIterator(Iterator):
 
         if spec == ['']:
             self.frozen = jax.tree_util.tree_map(lambda _: not unfreeze, self.frozen)
-            return
 
-        try:
-            sub = self.parameters
-            for k in spec:
-                sub = sub[k]
-        except NameError:
-            raise ValueError(f"The key '{k}' in the supplied spec '{spec}' doesn't exist.")
+        else:
+            try:
+                sub = self.parameters
+                for k in spec:
+                    sub = sub[k]
+            except NameError:
+                raise ValueError(f"The key '{k}' in the supplied spec '{spec}' doesn't exist.")
 
-        def _map_fn(path, x):
-            if len(path) < len(spec):
-                return x
-            for k, p in enumerate(path[:len(spec)]):
-                if p.key != spec[k]:
+            def _map_fn(path, x):
+                if len(path) < len(spec):
                     return x
+                for k, p in enumerate(path[:len(spec)]):
+                    if p.key != spec[k]:
+                        return x
 
-            return not unfreeze
+                return not unfreeze
 
-        self.frozen = jax.tree_util.tree_map_with_path(
-            _map_fn, self.frozen
-        )
+            self.frozen = jax.tree_util.tree_map_with_path(
+                _map_fn, self.frozen
+            )
 
         self.train_state = TrainState.create(
             apply_fn=self.train_state.apply_fn,
@@ -266,7 +262,7 @@ class Trainer:
     mutable: CollectionFilter = False
     capture_intermediates: Union[bool, Callable[["Module", str], bool]] = False
     seed: int | RNG = 42
-    strategy: type = JIT
+    strategy: type = Core
 
     def _initialize(self, rng: RNG, data: Iterator, method=None) -> dict:
         peek = data.peek()
@@ -283,6 +279,7 @@ class Trainer:
         init_vars: dict | None = None,
         frozen: dict | None = None,
         method: Union[Callable[..., Any], None] = None,
+        eager: bool = False,
         **kwargs,
     ) -> TrainIterator:
         """Create the training iterator
@@ -351,7 +348,6 @@ class Trainer:
                 True: optax.set_to_zero(),
                 False: self.optimizer,
             }, frozen)
-            # tx=self.optimizer,
         )
 
         losses = self.losses
@@ -369,7 +365,10 @@ class Trainer:
             loss_logs=loss_logs,
             variables=init_vars,
             frozen=frozen,
+            eager=eager,
+            has_aux = self.mutable or self.capture_intermediates            
         )
+
 
     def test(
         self,
@@ -378,6 +377,7 @@ class Trainer:
         variables: dict,
         strategy: type | None = None,
         method: Union[Callable[..., Any], str, None] = None,
+        eager: bool = False,
         **kwargs,
     ) -> Iterator:
         """Create test/validation iterator.
@@ -417,7 +417,7 @@ class Trainer:
             **kwargs,
         )
 
-        predict_fn = strategy.predict
+        predict_fn = _cached_jit(strategy.predict, static_argnames="apply_fn") if not eager else strategy.predict
 
         for data in wrap_data_stream(dataset):
             inputs, _, _ = unpack_x_y_sample_weight(data)
@@ -443,7 +443,7 @@ class Trainer:
         return {_get_name(m): m.compute() for m in metrics}
 
 
-    def predict(self, dataset: Iterable, variables: dict, strategy: type | None = None, method: Union[Callable[..., Any], str, None] = None, **kwargs):
+    def predict(self, dataset: Iterable, variables: dict, strategy: type | None = None, method: Union[Callable[..., Any], str, None] = None, eager:bool = False, **kwargs):
         """Create predictor iterator.
 
         Args:
@@ -465,7 +465,7 @@ class Trainer:
             **kwargs,
         )
 
-        predict_fn = strategy.predict
+        predict_fn = _cached_jit(strategy.predict, static_argnames="apply_fn") if not eager else strategy.predict
 
         for inputs in dataset:
             preds = predict_fn(apply_fn, variables, inputs)

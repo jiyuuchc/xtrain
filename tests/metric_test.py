@@ -28,7 +28,7 @@ def test_vmap_strategy():
         losses=mse,
         optimizer=optax.adam(0.01),
         seed=key,
-        strategy=xtrain.Eager,
+        strategy=xtrain.Core,
     )
 
     train_it = trainer.train(gen(X=_X, Y=_Y))

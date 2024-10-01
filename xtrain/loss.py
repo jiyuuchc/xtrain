@@ -51,6 +51,8 @@ class LossLog:
             self.cnt += sample_weight.sum()
             self.total += loss.sum()
 
+        return loss
+
     def compute(self):
         if self.cnt == 0:
             return 0

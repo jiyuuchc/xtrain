@@ -35,7 +35,7 @@ def test_freeze_fn():
         losses=mse,
         optimizer=optax.adamw(0.01),
         seed=key,
-        strategy=xtrain.Eager,
+        strategy=xtrain.Core,
     )
     train_it = trainer.train(gen)
 

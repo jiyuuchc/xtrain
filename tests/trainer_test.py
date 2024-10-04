@@ -34,6 +34,8 @@ def test_trainer():
         xtrain.GeneratorAdapter(gen)
     )
 
+    var_struct = jax.tree_util.tree_structure(train_it.variables)
+
     last_loss = 1000
     for epoch in range(2):
         train_it.reset()
@@ -46,6 +48,8 @@ def test_trainer():
         assert loss < last_loss
 
         last_loss = loss
+
+    assert var_struct == jax.tree_util.tree_structure(train_it.variables)
 
 def test_vmap_strategy():
     key = jax.random.PRNGKey(0)

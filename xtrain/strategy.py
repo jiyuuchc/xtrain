@@ -22,16 +22,16 @@ class Core:
             name: jax.random.fold_in(rng, step) for name, rng in train_obj.rngs.items()
         }
 
-        variables = train_obj.variables
+        variables = train_obj.variables.copy()
         variables["params"] = params
 
-        model_out = Inputs.apply(
+        prediction = Inputs.apply(
             train_obj.train_state.apply_fn,
             variables, 
             rngs=rngs, 
         )(inputs)
 
-        prediction, new_variables = unpack_prediction_and_state(model_out, train_obj.has_aux)
+        prediction, new_variables = unpack_prediction_and_state(prediction, train_obj.has_aux)
         if "params" in new_variables:
             del new_variables["params"]
         train_obj.variables.update(new_variables)
@@ -123,15 +123,15 @@ class VMapped(Core):
         }
         inputs = inputs.update(rngs=rngs)
 
-        variables = train_obj.variables
+        variables = train_obj.variables.copy()
         variables["params"] = params
 
-        model_out = jax.vmap(Inputs.apply(
+        prediction = jax.vmap(Inputs.apply(
             train_obj.train_state.apply_fn,
             variables, 
         ))(inputs)
 
-        prediction, new_variables = unpack_prediction_and_state(model_out, train_obj.has_aux)
+        prediction, new_variables = unpack_prediction_and_state(prediction, train_obj.has_aux)
         if "params" in new_variables:
             del new_variables["params"]
 

@@ -20,8 +20,8 @@ LossFunc = LossFunc_ | str
 class LossLog:
     loss_fn: LossFunc = struct.field(pytree_node=False)
     weight: float = 1.0
-    cnt: float = jnp.array(0.0)
-    total: float = jnp.array(0.0)
+    cnt: ArrayLike = jnp.array(0.0)
+    total: ArrayLike = jnp.array(0.0)
 
     def __post_init__(self):
         self.__name__ = _get_name(self.loss_fn)
@@ -34,7 +34,7 @@ class LossLog:
         else:
             loss = self.loss_fn(batch, prediction)
 
-        return loss
+        return loss * self.weight
 
     def update(self, batch, prediction):
         _, _, sample_weight = unpack_x_y_sample_weight(batch)

@@ -355,7 +355,10 @@ class Trainer:
             iter(losses)
         except:
             losses = (losses,)
-        loss_logs = tuple(LossLog(loss) for loss in losses)
+        loss_logs = tuple(
+            loss if isinstance(loss, LossLog) else LossLog(loss) 
+            for loss in losses
+        )
 
         return TrainIterator(
             ctx=config,

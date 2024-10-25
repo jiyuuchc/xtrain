@@ -20,8 +20,8 @@ LossFunc = LossFunc_ | str
 class LossLog:
     loss_fn: LossFunc = struct.field(pytree_node=False)
     weight: float = 1.0
-    cnt: ArrayLike = jnp.array(0.0)
-    total: ArrayLike = jnp.array(0.0)
+    cnt: float = 0.0
+    total: float = 0.0
 
     def __post_init__(self):
         self.__name__ = _get_name(self.loss_fn)

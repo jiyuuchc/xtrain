@@ -7,9 +7,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-flax = "^0.8"
+flax = ">0.8"
 jax = { extras = ["cuda12"], version = "^0.4", optional = true }
-cloudpickle = "3.0.0"
 
 [tool.poetry.extras]
 cuda12 = ["jax"]

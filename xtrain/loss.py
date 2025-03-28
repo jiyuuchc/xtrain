@@ -54,10 +54,11 @@ class LossLog:
         return loss
 
     def compute(self):
-        if self.cnt == 0:
-            return 0
-        else:
-            return self.total / self.cnt
+        return jnp.where(
+            self.cnt > 0,
+            self.total / self.cnt,
+            0,
+        )
 
     def reset(self):
         self.cnt = jnp.array(0.0)

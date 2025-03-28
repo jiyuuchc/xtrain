@@ -12,15 +12,19 @@ from . import base_trainer
 from .loss import LossLog
 from .utils import Inputs, unpack_prediction_and_state, unpack_x_y_sample_weight
 
-class Core:
+def _fold_rng(rngs, n):
+    return {
+        name: jax.random.fold_in(rng, n) for name, rng in rngs.items()
+    }
+
+
+class Eager:
     @classmethod
     def loss_fn(cls, params, train_obj, batch):
         inputs, _, sample_weight = unpack_x_y_sample_weight(batch)
 
         step = train_obj.train_state.step
-        rngs = {
-            name: jax.random.fold_in(rng, step) for name, rng in train_obj.rngs.items()
-        }
+        rngs = _fold_rng(train_obj.rngs, step)
 
         variables = train_obj.variables.copy()
         variables["params"] = params
@@ -73,42 +77,25 @@ class Core:
         train_obj: base_trainer.TrainIterator,
         batch: tp.Any,
     ) -> tuple[tp.Any, base_trainer.TrainIterator]:
-        try:
-            axis_index = jax.lax.axis_index("mapped")
-            train_obj = train_obj.replace(
-                rngs={
-                    name: jax.random.fold_in(key, axis_index)
-                    for name, key in train_obj.rngs.items()
-                }
-            )
-        except NameError:
-            axis_index = -1
-
         grads, (preds, train_obj) = jax.grad(cls.loss_fn, has_aux=True)(
             train_obj.train_state.params,
             train_obj,
             batch,
         )
 
-        try:
-            grads = jax.lax.pmean(grads, axis_name="mapped")
-            losses = jax.lax.pmean(losses, axis_name="mapped")
-        except NameError:
-            pass
-
-        # grads = jax.tree_util.tree_map(
-        #     lambda x, freeze: jax.numpy.zeros_like(x) if freeze else x,
-        #     grads, train_obj.frozen,
-        # )
-
         train_obj.train_state = train_obj.train_state.apply_gradients(grads=grads)
 
         return preds, train_obj
 
 
+class Core(Eager):
+    train_step = jax.jit(Eager.train_step)
+
 JIT = Core
 
-class VMapped(Core):
+class VMapped(Eager):
+    _transform_fn = jax.vmap
+
     @classmethod
     def loss_fn(cls, params, train_obj, batch):
         inputs, _, sample_weight = unpack_x_y_sample_weight(batch)
@@ -126,7 +113,7 @@ class VMapped(Core):
         variables = train_obj.variables.copy()
         variables["params"] = params
 
-        prediction = jax.vmap(Inputs.apply(
+        prediction = cls._transform_fn(Inputs.apply(
             train_obj.train_state.apply_fn,
             variables, 
         ))(inputs)
@@ -140,7 +127,7 @@ class VMapped(Core):
 
         losses, loss_logs = [], []
         for loss_fn in train_obj.loss_logs:
-            loss = jax.vmap(loss_fn.compute_loss)(batch, prediction)
+            loss = cls._transform_fn(loss_fn.compute_loss)(batch, prediction)
             if sample_weight is None:
                 sample_weight = jnp.ones_like(loss)
 
@@ -158,7 +145,6 @@ class VMapped(Core):
 
         return total_loss, (prediction, train_obj)
 
-
     @classmethod
     def init_fn(cls, key, model, inputs, method=None):
         inputs = jax.tree_util.tree_map(lambda v:v[0], inputs)
@@ -171,19 +157,8 @@ class VMapped(Core):
     )
 
 
-class Distributed(Core):
-    @classmethod
-    def init_fn(cls, key, model, inputs, method):
-        inputs = jax.tree_map(lambda v: v[0], inputs)
-        return Core.init_fn(key, model, inputs, method)
-
-
-    train_step = jax.pmap(
-        Core.train_step,
-        axis_name="mapped",
-        in_axes=(None, 0),
-        out_axes=(None, None, 0),
-    )
+class Distributed(VMapped):
+    _transform_fn = jax.pmap
 
     predict = jax.pmap(
         Core.predict,

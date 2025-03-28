@@ -17,7 +17,8 @@ from flax.core.scope import CollectionFilter
 from flax.training.train_state import TrainState
 
 from .loss import LossLog, LossFunc
-from .strategy import Core
+from .strategy import Core, Eager
+
 from .utils import (
     Peekable,
     _get_name,
@@ -78,7 +79,7 @@ class TrainIterator(Iterator):
     loss_logs: tuple[LossLog]
     variables: dict = struct.field(default_factory=dict)
     frozen: dict = struct.field(default_factory=dict, pytree_node=False)
-    eager: bool = False
+    # eager: bool = False
     has_aux: bool = struct.field(default=False, pytree_node=False)
 
     @property
@@ -131,14 +132,15 @@ class TrainIterator(Iterator):
             loss.reset()
 
     def __next__(self):
-        train_fn = _cached_jit(self.ctx.strategy.train_step) if not self.eager else self.ctx.strategy.train_step
+        # train_fn = _cached_jit(self.ctx.strategy.train_step) if not self.eager else self.ctx.strategy.train_step
+        train_fn = self.ctx.strategy.train_step
 
         batch = next(self.data)
 
         preds, new_it = train_fn(self, batch)
 
         for loss_log in new_it.loss_logs:
-            assert not jnp.isnan(loss_log.total).any(), f"{loss_log}"
+            assert not jnp.isnan(loss_log.total).any(), f"nan encountered when computing loss {loss_log.__name__}"
         
         self.train_state = new_it.train_state
         self.variables = new_it.variables
@@ -279,7 +281,6 @@ class Trainer:
         init_vars: dict | None = None,
         frozen: dict | None = None,
         method: Union[Callable[..., Any], None] = None,
-        eager: bool = False,
         **kwargs,
     ) -> TrainIterator:
         """Create the training iterator
@@ -368,7 +369,7 @@ class Trainer:
             loss_logs=loss_logs,
             variables=init_vars,
             frozen=frozen,
-            eager=eager,
+            # eager=eager,
             has_aux = self.mutable or self.capture_intermediates            
         )
 
@@ -380,7 +381,7 @@ class Trainer:
         variables: dict,
         strategy: type | None = None,
         method: Union[Callable[..., Any], str, None] = None,
-        eager: bool = False,
+        # eager: bool = False,
         **kwargs,
     ) -> Iterator:
         """Create test/validation iterator.
@@ -420,7 +421,8 @@ class Trainer:
             **kwargs,
         )
 
-        predict_fn = _cached_jit(strategy.predict, static_argnames="apply_fn") if not eager else strategy.predict
+        # predict_fn = _cached_jit(strategy.predict, static_argnames="apply_fn") if not eager else strategy.predict
+        predict_fn = strategy.predict
 
         for data in wrap_data_stream(dataset):
             inputs, _, _ = unpack_x_y_sample_weight(data)
@@ -446,7 +448,7 @@ class Trainer:
         return {_get_name(m): m.compute() for m in metrics}
 
 
-    def predict(self, dataset: Iterable, variables: dict, strategy: type | None = None, method: Union[Callable[..., Any], str, None] = None, eager:bool = False, **kwargs):
+    def predict(self, dataset: Iterable, variables: dict, strategy: type | None = None, method: Union[Callable[..., Any], str, None] = None, **kwargs):
         """Create predictor iterator.
 
         Args:
@@ -468,7 +470,8 @@ class Trainer:
             **kwargs,
         )
 
-        predict_fn = _cached_jit(strategy.predict, static_argnames="apply_fn") if not eager else strategy.predict
+        # predict_fn = _cached_jit(strategy.predict, static_argnames="apply_fn") if not eager else strategy.predict
+        predict_fn = strategy.predict
 
         for inputs in dataset:
             preds = predict_fn(apply_fn, variables, inputs)

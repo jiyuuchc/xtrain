@@ -3,6 +3,7 @@ import dataclasses
 import re
 import multiprocessing
 import queue
+
 from collections import deque
 from typing import Any, Dict, Iterable, Optional, Set, Tuple
 
@@ -337,4 +338,33 @@ def wrap_data_stream(ds):
 
     return ds
 
-    
+
+def gf_cycle(gf):
+    @functools.wraps(gf)
+    def _wrapped(*args, **kwargs):
+        while True:
+            yield from gf(*args, **kwargs)
+
+    return _wrapped
+
+
+def gf_batch(gf, *, batch_size, drop_remainder=True):
+    @functools.wraps(gf)
+    def _wrapped(*args, **kwargs):
+        stopping = False
+        it = gf(*args, **kwargs)
+        while not stopping:
+            data = []
+            for _ in range(batch_size):
+                try:
+                    data.append(next(it))
+                except StopIteration:
+                    stopping = True
+                    break
+
+            if len(data) > 0:
+                if not drop_remainder or len(data) == batch_size:
+                    data = jax.tree_util.tree_map(lambda *x: jax.numpy.stack(x), *data)
+                    yield data
+
+    return _wrapped

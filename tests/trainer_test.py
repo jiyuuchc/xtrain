@@ -10,33 +10,21 @@ import pytest
 import xtrain
 
 key = jax.random.PRNGKey(0)
-key, k1, k2 = jax.random.split(key, 3)
-_X = jax.random.uniform(k1, [16, 4, 16])
-_Y = jax.random.uniform(k2, [16, 4, 4])
 
-def gen(X=_X, Y=_Y):
-    for x, y in zip(X, Y):
-        yield x, y
-
-def mse(batch, prediction):
-    labels = batch[1]
-    return ((prediction - labels) ** 2).mean()
-
-def test_trainer():
+def test_variable_structure(train_data, loss_fn):
     trainer = xtrain.Trainer(
         model=nn.Dense(4),
-        losses=mse,
+        losses=loss_fn,
         optimizer=optax.adam(0.01),
         seed=key,
         strategy=xtrain.Core,
     )
-    train_it = trainer.train(
-        xtrain.GeneratorAdapter(gen)
-    )
+    train_it = trainer.train(train_data)
 
     var_struct = jax.tree_util.tree_structure(train_it.variables)
 
     last_loss = 1000
+
     for epoch in range(2):
         train_it.reset()
 
@@ -51,26 +39,16 @@ def test_trainer():
 
     assert var_struct == jax.tree_util.tree_structure(train_it.variables)
 
-def test_vmap_strategy():
-    key = jax.random.PRNGKey(0)
-    key, k1, k2 = jax.random.split(key, 3)
-    _X = jax.random.uniform(k1, [16, 4, 16])
-    _Y = jax.random.uniform(k2, [16, 4, 4])
 
-    def gen(X, Y):
-        for x, y in zip(X, Y):
-            yield x, y
-
+def test_vmap_strategy(train_data, loss_fn):
     def _run(**kwargs):
-        g = gen(X=_X, Y=_Y)
-
-        for _ in (it := trainer.train(g, **kwargs)):
+        for _ in (it := trainer.train(train_data, **kwargs)):
             pass
         return it.loss["mse"]
 
     trainer = xtrain.Trainer(
         model=nn.Dense(4),
-        losses=mse,
+        losses=loss_fn,
         optimizer=optax.adam(0.01),
         seed=key,
     )
